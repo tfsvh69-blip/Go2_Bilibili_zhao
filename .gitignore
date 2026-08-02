@@ -1,0 +1,25 @@
+# ROS 2 / colcon 生成目录
+**/build/
+**/install/
+**/log/
+
+# Git 元数据与编辑器缓存
+**/.git/
+.vscode/*
+!.vscode/settings.json
+*.db
+*.db-shm
+*.db-wal
+
+# 本机与临时文件
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+*.swp
+*~
+
+# 参考资料与大文件：源码已在 ROS 工作空间中维护
+/Go2 URDF/
+/Go2简化模型/
+/学习文档/

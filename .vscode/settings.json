@@ -1,0 +1,32 @@
+{
+    "ROS2.distro": "humble",
+    "workbench.editorAssociations": {
+        "*.md": "vscode.markdown.preview.editor"
+    },
+    "python.autoComplete.extraPaths": [
+        "/home/luhao/my/ROS/myproject/ros2_ws/install/my_robot_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/servo_action/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_robot_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_cr5_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_arm_text/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_bringup_v3/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_msgs_v3/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_moveit/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_demo/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/luhao/my/ROS/myproject/ros2_ws/install/my_robot_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/servo_action/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_robot_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_cr5_interfaces/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/my_arm_text/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_bringup_v3/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_msgs_v3/local/lib/python3.10/dist-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_moveit/lib/python3.10/site-packages",
+        "/home/luhao/my/ROS/dobot_ws/install/dobot_demo/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}
