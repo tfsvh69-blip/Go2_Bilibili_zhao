@@ -72,7 +72,8 @@ public:
         pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic, qos_imu);
         pubImuPath = create_publisher<nav_msgs::msg::Path>("lio_sam/imu/path", qos);
 
-        tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+        if (publishLioOdomTf)
+            tfBroadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(this);
     }
 
     Eigen::Isometry3d odom2affine(nav_msgs::msg::Odometry odom)
@@ -107,6 +108,9 @@ public:
             else
                 break;
         }
+        if (imuOdomQueue.empty())
+            return;
+
         Eigen::Isometry3d imuOdomAffineFront = odom2affine(imuOdomQueue.front());
         Eigen::Isometry3d imuOdomAffineBack = odom2affine(imuOdomQueue.back());
         Eigen::Isometry3d imuOdomAffineIncre = imuOdomAffineFront.inverse() * imuOdomAffineBack;
@@ -123,26 +127,31 @@ public:
         laserOdometry.pose.pose.orientation = t.transform.rotation;
         pubImuOdometry->publish(laserOdometry);
 
-        // publish tf
-        if(lidarFrame != baselinkFrame)
+        // CHAMP/EKF 默认拥有 odom -> base_footprint，LIO-SAM 仅保留内部里程计。
+        if (publishLioOdomTf)
         {
-            try
+            if(lidarFrame != baselinkFrame)
             {
-                tf2::fromMsg(tfBuffer->lookupTransform(
-                    lidarFrame, baselinkFrame, rclcpp::Time(0)), lidar2Baselink);
+                try
+                {
+                    tf2::fromMsg(tfBuffer->lookupTransform(
+                        lidarFrame, baselinkFrame, rclcpp::Time(0)), lidar2Baselink);
+                }
+                catch (const tf2::TransformException & ex)
+                {
+                    RCLCPP_WARN(get_logger(), "无法获取 %s -> %s：%s",
+                        lidarFrame.c_str(), baselinkFrame.c_str(), ex.what());
+                    return;
+                }
+                tf2::Stamped<tf2::Transform> tb(
+                    tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);
+                tCur = tb;
             }
-            catch (tf2::TransformException ex)
-            {
-                RCLCPP_ERROR(get_logger(), "%s", ex.what());
-            }
-            tf2::Stamped<tf2::Transform> tb(
-                tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);
-            tCur = tb;
+            geometry_msgs::msg::TransformStamped ts;
+            tf2::convert(tCur, ts);
+            ts.child_frame_id = baselinkFrame;
+            tfBroadcaster->sendTransform(ts);
         }
-        geometry_msgs::msg::TransformStamped ts;
-        tf2::convert(tCur, ts);
-        ts.child_frame_id = baselinkFrame;
-        tfBroadcaster->sendTransform(ts);
 
         // publish IMU path
         static nav_msgs::msg::Path imuPath;

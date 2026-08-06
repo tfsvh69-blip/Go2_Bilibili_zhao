@@ -2,6 +2,7 @@
 **/build/
 **/install/
 **/log/
+**/symlink_install_manifest.txt
 
 # Git 元数据与编辑器缓存
 **/.git/
@@ -19,7 +20,5 @@ __pycache__/
 *.swp
 *~
 
-# 参考资料与大文件：源码已在 ROS 工作空间中维护
-/Go2 URDF/
-/Go2简化模型/
-/学习文档/
+# 未完成的参考资料下载
+/文档/*.downloading

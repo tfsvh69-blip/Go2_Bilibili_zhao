@@ -17,16 +17,31 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp> 
 
+#include <cstdlib>
+#include <string>
+
+#ifdef NDT_CUDA_ENABLED
+#include <cuda_runtime_api.h>
+#include <fast_gicp/ndt/ndt_cuda.hpp>
+#endif
+
 using PointT = pcl::PointXYZ;
 using PointCloud = pcl::PointCloud<PointT>;
 // 使用pclomp命名空间的NDT实现
 using NormalDistributionsTransform = pclomp::NormalDistributionsTransform<PointT, PointT>;
+#ifdef NDT_CUDA_ENABLED
+using CudaNormalDistributionsTransform = fast_gicp::NDTCuda<PointT, PointT>;
+#endif
 
 class NDTLocalization : public rclcpp::Node {
 public:
     NDTLocalization() : Node("ndt_relocalization_node") {
         // 从参数服务器获取参数
-        declare_parameter("map_path", "/home/lx/tmp/map_indoor/GlobalMap.pcd");
+        const char *home = std::getenv("HOME");
+        const std::string default_map_path = home == nullptr
+            ? "go2_maps/latest/GlobalMap.pcd"
+            : std::string(home) + "/go2_maps/latest/GlobalMap.pcd";
+        declare_parameter("map_path", default_map_path);
         
         // NDT参数
         declare_parameter("ndt_resolution", 1.0);
@@ -38,10 +53,13 @@ public:
         declare_parameter("use_multi_scale_ndt", true);
         declare_parameter("ndt_resolutions", std::vector<double>{4.0, 2.0, 1.0});
         declare_parameter("ndt_num_threads", 4);
+        declare_parameter("registration_backend", "cuda");
+        declare_parameter("gpu_device_id", 0);
         
         // 点云预处理参数
         declare_parameter("voxel_leaf_size", 0.2);
         declare_parameter("input_cloud_topic", "/velodyne_points");
+        declare_parameter("input_cloud_frame", "velodyne");
         
         // 坐标系配置
         declare_parameter("global_frame_id", "map");
@@ -72,9 +90,13 @@ public:
         use_multi_scale_ndt_ = get_parameter("use_multi_scale_ndt").as_bool();
         ndt_resolutions_ = get_parameter("ndt_resolutions").as_double_array();
         ndt_num_threads_ = get_parameter("ndt_num_threads").as_int();
+        registration_backend_ = get_parameter("registration_backend").as_string();
+        gpu_device_id_ = get_parameter("gpu_device_id").as_int();
+        configureRegistrationBackend();
         
         voxel_leaf_size_ = get_parameter("voxel_leaf_size").as_double();
         std::string input_cloud_topic = get_parameter("input_cloud_topic").as_string();
+        input_cloud_frame_ = get_parameter("input_cloud_frame").as_string();
         
         global_frame_id_ = get_parameter("global_frame_id").as_string();
         odom_frame_id_ = get_parameter("odom_frame_id").as_string();
@@ -88,6 +110,7 @@ public:
         
         // 设置初始猜测姿态
         has_initial_guess_ = false;
+        initial_guess_is_base_pose_ = false;
         if (use_initial_pose_) {
             initial_guess_ = Eigen::Matrix4f::Identity();
             double x = get_parameter("initial_pose_x").as_double();
@@ -104,12 +127,14 @@ public:
             initial_guess_.block<3, 3>(0, 0) = rotation.toRotationMatrix().cast<float>();
             initial_guess_.block<3, 1>(0, 3) = translation.cast<float>();
             has_initial_guess_ = true;
+            initial_guess_is_base_pose_ = true;
             RCLCPP_INFO(this->get_logger(), "Using initial pose: [%f, %f, %f]", x, y, z);
         }
         
         RCLCPP_INFO(this->get_logger(), "Loading map from: %s", map_path.c_str());
         RCLCPP_INFO(this->get_logger(), "NDT resolution: %f", ndt_resolution_);
         RCLCPP_INFO(this->get_logger(), "Multi-scale NDT: %s", use_multi_scale_ndt_ ? "enabled" : "disabled");
+        RCLCPP_INFO(this->get_logger(), "Registration backend: %s", registration_backend_.c_str());
         RCLCPP_INFO(this->get_logger(), "Input cloud topic: %s", input_cloud_topic.c_str());
         RCLCPP_INFO(this->get_logger(), "TF frames: %s -> %s -> %s", 
                    global_frame_id_.c_str(), odom_frame_id_.c_str(), robot_frame_id_.c_str());
@@ -143,10 +168,18 @@ public:
         
         // 创建多分辨率地图
         if (use_multi_scale_ndt_) {
-            createMultiResolutionMaps();
+            if (registration_backend_ == "cuda") {
+                createMultiResolutionCudaMaps();
+            } else {
+                createMultiResolutionMaps();
+            }
         } else {
             // 创建单一分辨率NDT对象
-            createNDT();
+            if (registration_backend_ == "cuda") {
+                createCudaNDT();
+            } else {
+                createNDT();
+            }
         }
 
         // 初始化TF监听器
@@ -179,6 +212,67 @@ public:
     }
 
 private:
+    void configureRegistrationBackend() {
+        if (registration_backend_ != "cuda" && registration_backend_ != "omp") {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Unknown registration_backend '%s', falling back to omp",
+                registration_backend_.c_str());
+            registration_backend_ = "omp";
+        }
+
+        if (registration_backend_ != "cuda") {
+            return;
+        }
+
+#ifdef NDT_CUDA_ENABLED
+        int device_count = 0;
+        const cudaError_t count_result = cudaGetDeviceCount(&device_count);
+        if (count_result != cudaSuccess || device_count == 0) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "CUDA device unavailable (%s), falling back to omp",
+                cudaGetErrorString(count_result));
+            registration_backend_ = "omp";
+            return;
+        }
+
+        if (gpu_device_id_ < 0 || gpu_device_id_ >= device_count) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "gpu_device_id=%d is out of range [0, %d), falling back to device 0",
+                gpu_device_id_, device_count);
+            gpu_device_id_ = 0;
+        }
+
+        const cudaError_t set_result = cudaSetDevice(gpu_device_id_);
+        if (set_result != cudaSuccess) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Cannot select CUDA device %d (%s), falling back to omp",
+                gpu_device_id_, cudaGetErrorString(set_result));
+            registration_backend_ = "omp";
+            return;
+        }
+
+        cudaDeviceProp device_properties{};
+        const cudaError_t properties_result =
+            cudaGetDeviceProperties(&device_properties, gpu_device_id_);
+        if (properties_result == cudaSuccess) {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "CUDA NDT enabled on device %d: %s (compute %d.%d)",
+                gpu_device_id_, device_properties.name,
+                device_properties.major, device_properties.minor);
+        }
+#else
+        RCLCPP_WARN(
+            this->get_logger(),
+            "This build has no CUDA NDT support, falling back to omp");
+        registration_backend_ = "omp";
+#endif
+    }
+
     void createNDT() {
         // 设置NDT参数
         ndt_ = std::make_shared<NormalDistributionsTransform>();
@@ -196,6 +290,24 @@ private:
         
         RCLCPP_INFO(this->get_logger(), "NDT parameters: resolution=%f, step_size=%f, epsilon=%f, max_iter=%d, threads=%d",
                    ndt_resolution_, ndt_step_size_, ndt_epsilon_, ndt_max_iterations_, ndt_num_threads_);
+    }
+
+    void createCudaNDT() {
+#ifdef NDT_CUDA_ENABLED
+        cuda_ndt_ = std::make_shared<CudaNormalDistributionsTransform>();
+        cuda_ndt_->setResolution(ndt_resolution_);
+        cuda_ndt_->setDistanceMode(fast_gicp::NDTDistanceMode::D2D);
+        cuda_ndt_->setNeighborSearchMethod(fast_gicp::NeighborSearchMethod::DIRECT7);
+        cuda_ndt_->setTransformationEpsilon(ndt_epsilon_);
+        cuda_ndt_->setMaximumIterations(ndt_max_iterations_);
+        cuda_ndt_->setInputTarget(global_map_);
+        RCLCPP_INFO(
+            this->get_logger(),
+            "CUDA NDT parameters: resolution=%f, epsilon=%f, max_iter=%d",
+            ndt_resolution_, ndt_epsilon_, ndt_max_iterations_);
+#else
+        createNDT();
+#endif
     }
     
     void createMultiResolutionMaps() {
@@ -221,6 +333,31 @@ private:
             RCLCPP_INFO(this->get_logger(), "Added NDT at resolution: %f with %d threads", resolution, ndt_num_threads_);
         }
         RCLCPP_INFO(this->get_logger(), "Created %zu multi-resolution NDT objects", ndt_vector_.size());
+    }
+
+    void createMultiResolutionCudaMaps() {
+#ifdef NDT_CUDA_ENABLED
+        cuda_ndt_vector_.clear();
+        for (const auto& resolution : ndt_resolutions_) {
+            auto ndt = std::make_shared<CudaNormalDistributionsTransform>();
+            ndt->setResolution(resolution);
+            ndt->setDistanceMode(fast_gicp::NDTDistanceMode::D2D);
+            ndt->setNeighborSearchMethod(fast_gicp::NeighborSearchMethod::DIRECT7);
+            ndt->setTransformationEpsilon(ndt_epsilon_);
+            ndt->setMaximumIterations(ndt_max_iterations_);
+            ndt->setInputTarget(global_map_);
+            cuda_ndt_vector_.push_back(ndt);
+            RCLCPP_INFO(
+                this->get_logger(),
+                "Added CUDA NDT at resolution: %f", resolution);
+        }
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Created %zu multi-resolution CUDA NDT objects",
+            cuda_ndt_vector_.size());
+#else
+        createMultiResolutionMaps();
+#endif
     }
 
     void publishMapCallback() {
@@ -269,9 +406,26 @@ private:
         
         initial_guess_.block<3, 3>(0, 0) = q.toRotationMatrix();
         has_initial_guess_ = true;
+        initial_guess_is_base_pose_ = true;
         
         RCLCPP_INFO(this->get_logger(), "Received initial pose: [%f, %f, %f]", 
                    initial_guess_(0, 3), initial_guess_(1, 3), initial_guess_(2, 3));
+    }
+
+    Eigen::Matrix4f transformToMatrix(
+        const geometry_msgs::msg::Transform & transform) const
+    {
+        Eigen::Matrix4f result = Eigen::Matrix4f::Identity();
+        const Eigen::Quaternionf rotation(
+            transform.rotation.w,
+            transform.rotation.x,
+            transform.rotation.y,
+            transform.rotation.z);
+        result.block<3, 3>(0, 0) = rotation.normalized().toRotationMatrix();
+        result(0, 3) = transform.translation.x;
+        result(1, 3) = transform.translation.y;
+        result(2, 3) = transform.translation.z;
+        return result;
     }
     
     // 多分辨率NDT配准方法
@@ -328,8 +482,83 @@ private:
         RCLCPP_INFO(this->get_logger(), "Multi-resolution NDT final score: %f", final_score);
         return result_transform;
     }
+
+    Eigen::Matrix4f performMultiResolutionCudaNDT(
+        const PointCloud::Ptr& source_cloud,
+        const Eigen::Matrix4f& initial_guess) {
+#ifdef NDT_CUDA_ENABLED
+        if (cuda_ndt_vector_.empty()) {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "No CUDA NDT objects available for multi-resolution alignment");
+            return initial_guess;
+        }
+
+        Eigen::Matrix4f result_transform = initial_guess;
+        double final_score = 0.0;
+
+        for (size_t i = 0; i < cuda_ndt_vector_.size(); ++i) {
+            const float leaf_size =
+                static_cast<float>(ndt_resolutions_[i]) / 10.0f;
+            PointCloud::Ptr downsampled_cloud(new PointCloud);
+            pcl::ApproximateVoxelGrid<PointT> voxel_grid;
+            voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+            voxel_grid.setInputCloud(source_cloud);
+            voxel_grid.filter(*downsampled_cloud);
+
+            auto& ndt = cuda_ndt_vector_[i];
+            ndt->setInputSource(downsampled_cloud);
+            PointCloud aligned_cloud;
+            ndt->align(aligned_cloud, result_transform);
+
+            if (ndt->hasConverged()) {
+                result_transform = ndt->getFinalTransformation();
+                final_score = ndt->getFitnessScore();
+                if (debug_mode_) {
+                    RCLCPP_INFO(
+                        this->get_logger(),
+                        "CUDA level %zu: resolution=%f, points=%zu, score=%f",
+                        i, ndt_resolutions_[i],
+                        downsampled_cloud->size(), final_score);
+                }
+            } else {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "CUDA NDT at level %zu did not converge", i);
+            }
+        }
+
+        if (debug_mode_) {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "Multi-resolution CUDA NDT final score: %f", final_score);
+        }
+        return result_transform;
+#else
+        return performMultiResolutionNDT(source_cloud, initial_guess);
+#endif
+    }
     
     void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+        const std::string cloud_frame = msg->header.frame_id.empty()
+            ? input_cloud_frame_
+            : msg->header.frame_id;
+
+        // NDT配准的是雷达点云，先读取URDF中的base_link -> velodyne外参。
+        Eigen::Matrix4f base_to_cloud = Eigen::Matrix4f::Identity();
+        if (cloud_frame != robot_frame_id_) {
+            try {
+                const auto transform = tf_buffer_->lookupTransform(
+                    robot_frame_id_, cloud_frame, msg->header.stamp);
+                base_to_cloud = transformToMatrix(transform.transform);
+            } catch (const tf2::TransformException &ex) {
+                RCLCPP_WARN(
+                    this->get_logger(), "无法获取 %s -> %s 外参：%s",
+                    robot_frame_id_.c_str(), cloud_frame.c_str(), ex.what());
+                return;
+            }
+        }
+
         // 1. 转换 ROS2 PointCloud2 -> PCL PointCloud
         PointCloud::Ptr cloud(new PointCloud);
         pcl::fromROSMsg(*msg, *cloud);
@@ -376,6 +605,10 @@ private:
             
             if (has_initial_guess_) {
                 init_guess = initial_guess_;
+                if (initial_guess_is_base_pose_) {
+                    // /initialpose描述map -> base_link，NDT需要map -> 雷达。
+                    init_guess = init_guess * base_to_cloud;
+                }
                 if (debug_mode_) {
                     RCLCPP_INFO(this->get_logger(), "Using initial guess: [%f, %f, %f]",
                                 init_guess(0, 3), init_guess(1, 3), init_guess(2, 3));
@@ -391,27 +624,58 @@ private:
             // 根据配置选择使用单一分辨率或多分辨率NDT
             if (use_multi_scale_ndt_) {
                 // 执行多分辨率NDT配准
-                final_transform = performMultiResolutionNDT(downsampled_cloud, init_guess);
+                if (registration_backend_ == "cuda") {
+                    final_transform =
+                        performMultiResolutionCudaNDT(downsampled_cloud, init_guess);
+                } else {
+                    final_transform =
+                        performMultiResolutionNDT(downsampled_cloud, init_guess);
+                }
             } else {
                 // 执行传统单一分辨率NDT配准
-                if (!ndt_) {
-                    RCLCPP_ERROR(this->get_logger(), "Single resolution NDT object not initialized!");
-                    return;
-                }
-                ndt_->setInputSource(downsampled_cloud);
-                pcl::PointCloud<PointT> output;
-                ndt_->align(output, init_guess);
-                
-                if (!ndt_->hasConverged()) {
-                    RCLCPP_WARN(this->get_logger(), "NDT did not converge");
-                    return;
-                }
-                
-                final_transform = ndt_->getFinalTransformation();
-                
-                if (debug_mode_) {
-                    RCLCPP_INFO(this->get_logger(), "Single-scale NDT: score=%f, iterations=%d",
-                                ndt_->getFitnessScore(), ndt_->getFinalNumIteration());
+                if (registration_backend_ == "cuda") {
+#ifdef NDT_CUDA_ENABLED
+                    if (!cuda_ndt_) {
+                        RCLCPP_ERROR(
+                            this->get_logger(),
+                            "Single resolution CUDA NDT object not initialized!");
+                        return;
+                    }
+                    cuda_ndt_->setInputSource(downsampled_cloud);
+                    PointCloud output;
+                    cuda_ndt_->align(output, init_guess);
+                    if (!cuda_ndt_->hasConverged()) {
+                        RCLCPP_WARN(this->get_logger(), "CUDA NDT did not converge");
+                        return;
+                    }
+                    final_transform = cuda_ndt_->getFinalTransformation();
+                    if (debug_mode_) {
+                        RCLCPP_INFO(
+                            this->get_logger(),
+                            "Single-scale CUDA NDT: score=%f",
+                            cuda_ndt_->getFitnessScore());
+                    }
+#endif
+                } else {
+                    if (!ndt_) {
+                        RCLCPP_ERROR(this->get_logger(), "Single resolution NDT object not initialized!");
+                        return;
+                    }
+                    ndt_->setInputSource(downsampled_cloud);
+                    pcl::PointCloud<PointT> output;
+                    ndt_->align(output, init_guess);
+
+                    if (!ndt_->hasConverged()) {
+                        RCLCPP_WARN(this->get_logger(), "NDT did not converge");
+                        return;
+                    }
+
+                    final_transform = ndt_->getFinalTransformation();
+
+                    if (debug_mode_) {
+                        RCLCPP_INFO(this->get_logger(), "Single-scale NDT: score=%f, iterations=%d",
+                                    ndt_->getFitnessScore(), ndt_->getFinalNumIteration());
+                    }
                 }
             }
         } catch (const pcl::PCLException& e) {
@@ -422,6 +686,7 @@ private:
         // 保存结果用于下一次配准的初始猜测
         initial_guess_ = final_transform;
         has_initial_guess_ = true;
+        initial_guess_is_base_pose_ = false;
         
         // 5. 获取odom到base_link的变换
         geometry_msgs::msg::TransformStamped odom_to_base;
@@ -440,9 +705,9 @@ private:
         map_to_odom.header.frame_id = global_frame_id_;
         map_to_odom.child_frame_id = odom_frame_id_;
         
-        // 从激光雷达位姿推导出map到odom的变换
-        // 首先构建base_link在map中的位姿
-        Eigen::Matrix4f base_to_map = final_transform;
+        // final_transform是map -> 雷达，结合雷达到base_link的逆外参得到map -> base_link。
+        const Eigen::Matrix4f map_to_base =
+            final_transform * base_to_cloud.inverse();
         
         // 转换为ROS消息格式
         geometry_msgs::msg::PoseStamped base_in_map;
@@ -450,12 +715,12 @@ private:
         base_in_map.header.frame_id = global_frame_id_;
         
         // 提取平移
-        base_in_map.pose.position.x = base_to_map(0, 3);
-        base_in_map.pose.position.y = base_to_map(1, 3);
-        base_in_map.pose.position.z = base_to_map(2, 3);
+        base_in_map.pose.position.x = map_to_base(0, 3);
+        base_in_map.pose.position.y = map_to_base(1, 3);
+        base_in_map.pose.position.z = map_to_base(2, 3);
         
         // 提取旋转
-        Eigen::Matrix3f rot = base_to_map.block<3, 3>(0, 0);
+        Eigen::Matrix3f rot = map_to_base.block<3, 3>(0, 0);
         Eigen::Quaternionf quat(rot);
         base_in_map.pose.orientation.x = quat.x();
         base_in_map.pose.orientation.y = quat.y();
@@ -506,6 +771,10 @@ private:
     // 成员变量
     std::shared_ptr<NormalDistributionsTransform> ndt_;  // 使用共享指针
     std::vector<std::shared_ptr<NormalDistributionsTransform>> ndt_vector_; // 使用共享指针
+#ifdef NDT_CUDA_ENABLED
+    std::shared_ptr<CudaNormalDistributionsTransform> cuda_ndt_;
+    std::vector<std::shared_ptr<CudaNormalDistributionsTransform>> cuda_ndt_vector_;
+#endif
     
     PointCloud::Ptr global_map_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
@@ -526,6 +795,8 @@ private:
     bool use_multi_scale_ndt_;
     std::vector<double> ndt_resolutions_;
     int ndt_num_threads_;
+    std::string registration_backend_;
+    int gpu_device_id_;
     
     // 点云处理参数
     double voxel_leaf_size_;
@@ -533,12 +804,14 @@ private:
     // 初始猜测位姿
     Eigen::Matrix4f initial_guess_;
     bool has_initial_guess_;
+    bool initial_guess_is_base_pose_;
     bool use_initial_pose_;
     
     // 参数
     std::string global_frame_id_;
     std::string odom_frame_id_;
     std::string robot_frame_id_;
+    std::string input_cloud_frame_;
     std::string map_topic_;
     bool publish_tf_;
     bool debug_mode_;

@@ -1,20 +1,19 @@
-CHAMP's core libraries
+# CHAMP 核心库
 
-## Credits
+## 致谢
 
-### Papers
+### 论文
 
-- [Hierarchical controller for highly dynamic locomotion utilizing pattern modulation and impedance control : implementation on the MIT Cheetah robot](https://dspace.mit.edu/handle/1721.1/85490)
-- [Control of Forward Velocity for a Simplified Planar Hopping Robot](https://kodlab.seas.upenn.edu/uploads/Kod/Schwind95.pdf)
+- [基于模式调制与阻抗控制的层次化高动态运动控制器：在 MIT Cheetah 机器人上的实现](https://dspace.mit.edu/handle/1721.1/85490)
+- [简化平面跳跃机器人的前向速度控制](https://kodlab.seas.upenn.edu/uploads/Kod/Schwind95.pdf)
 
-### Libraries
+### 依赖库
 
 - [BasicLinearAlgebra](https://github.com/tomstewart89/BasicLinearAlgebra)
 - [Geometry](https://github.com/tomstewart89/Geometry)
-- [XML parser](https://github.com/ros-teleop/twist_mux/blob/a4167305582355ca2d80c295b7cb4dadaf4d9935/include/twist_mux/xmlrpc_helpers.h)
+- [XML 解析器](https://github.com/ros-teleop/twist_mux/blob/a4167305582355ca2d80c295b7cb4dadaf4d9935/include/twist_mux/xmlrpc_helpers.h)
 
-### Videos
+### 学习视频
 
-- [Inverse Kinematics](https://robotacademy.net.au/lesson/inverse-kinematics-for-a-2-joint-robot-arm-using-geometry/)
-
-- [Quadruped Robot High Level Concept](https://www.youtube.com/watch?v=v9aKdJAjBAs)
+- [逆运动学](https://robotacademy.net.au/lesson/inverse-kinematics-for-a-2-joint-robot-arm-using-geometry/)
+- [四足机器人高层概念](https://www.youtube.com/watch?v=v9aKdJAjBAs)

@@ -4,6 +4,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 import launch_ros
 
 def generate_launch_description():
@@ -22,22 +23,20 @@ def generate_launch_description():
             share_dir, 'config', 'params.yaml'),
         description='FPath to the ROS2 parameters file to use.')
 
+    publish_map_to_odom_declare = DeclareLaunchArgument(
+        'publish_map_to_odom',
+        default_value='true',
+        description='由LIO-SAM发布动态map到odom；启动NDT时应设为false')
+
     print("urdf_file_name : {}".format(xacro_path))
 
     return LaunchDescription([
         params_declare,
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            arguments='0.0 0.0 0.0 0.0 0.0 0.0 map odom_a'.split(' '),
-            parameters=[parameter_file],
-            output='screen'
-            ),
+        publish_map_to_odom_declare,
        
         Node(
             package='lio_sam',
             executable='lio_sam_imuPreintegration',
-            name='lio_sam_imuPreintegration',
             parameters=[parameter_file],
             output='screen'
         ),
@@ -59,7 +58,15 @@ def generate_launch_description():
             package='lio_sam',
             executable='lio_sam_mapOptimization',
             name='lio_sam_mapOptimization',
-            parameters=[parameter_file],
+            parameters=[
+                parameter_file,
+                {
+                    'publishMapToOdom': ParameterValue(
+                        LaunchConfiguration('publish_map_to_odom'),
+                        value_type=bool
+                    )
+                }
+            ],
             output='screen'
         ),
         Node(
@@ -70,9 +77,6 @@ def generate_launch_description():
             output='screen'
         )
     ])
-
-
-
 
 
 

@@ -1,0 +1,1367 @@
+
+<!DOCTYPE HTML>
+<html lang="" >
+    <head>
+        <meta charset="UTF-8">
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <title>3.4.3 驱动包实现（Python） · GitBook</title>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="description" content="">
+        <meta name="generator" content="GitBook 3.2.3">
+        
+        
+        
+    
+    <link rel="stylesheet" href="../../gitbook/style.css">
+
+    
+            
+                
+                <link rel="stylesheet" href="../../gitbook/gitbook-plugin-expandable-chapters/expandable-chapters.css">
+                
+            
+                
+                <link rel="stylesheet" href="../../gitbook/gitbook-plugin-highlight/website.css">
+                
+            
+                
+                <link rel="stylesheet" href="../../gitbook/gitbook-plugin-search/search.css">
+                
+            
+                
+                <link rel="stylesheet" href="../../gitbook/gitbook-plugin-fontsettings/website.css">
+                
+            
+        
+
+    
+
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+        
+    
+
+        
+    
+    
+    <meta name="HandheldFriendly" content="true"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="apple-touch-icon-precomposed" sizes="152x152" href="../../gitbook/images/apple-touch-icon-precomposed-152.png">
+    <link rel="shortcut icon" href="../../gitbook/images/favicon.ico" type="image/x-icon">
+
+    
+    <link rel="next" href="../35-ben-zhang-xiao-jie.html" />
+    
+    
+    <link rel="prev" href="342-gong-neng-bao-shi-xian.html" />
+    
+
+    </head>
+    <body>
+        
+<div class="book">
+    <div class="book-summary">
+        
+            
+<div id="book-search-input" role="search">
+    <input type="text" placeholder="Type to search" />
+</div>
+
+            
+                <nav role="navigation">
+                
+
+
+<ul class="summary">
+    
+    
+
+    
+
+    
+        
+        
+    
+        <li class="chapter " data-level="1.1" data-path="../../">
+            
+                <a href="../../">
+            
+                    
+                    前言
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2" data-path="../../chapter1.html">
+            
+                <a href="../../chapter1.html">
+            
+                    
+                    第1章 概述与开发环境搭建
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.2.1" data-path="../../chapter1/11-jia-gou-shuo-ming.html">
+            
+                <a href="../../chapter1/11-jia-gou-shuo-ming.html">
+            
+                    
+                    1.1 系统架构
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.2.1.1" data-path="../../chapter1/11-jia-gou-shuo-ming/111-xi-tong-jia-gou-shuo-ming.html">
+            
+                <a href="../../chapter1/11-jia-gou-shuo-ming/111-xi-tong-jia-gou-shuo-ming.html">
+            
+                    
+                    1.1.1 系统架构简介
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.1.2" data-path="../../chapter1/11-jia-gou-shuo-ming/112-kai-fa-jie-kou-shuo-ming.html">
+            
+                <a href="../../chapter1/11-jia-gou-shuo-ming/112-kai-fa-jie-kou-shuo-ming.html">
+            
+                    
+                    1.1.2 开发接口说明
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian.html">
+            
+                    
+                    1.2 ROS2开发环境搭建
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.2.2.1" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/121-zhun-bei-gong-zuo.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/121-zhun-bei-gong-zuo.html">
+            
+                    
+                    1.2.1 准备工作
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2.2" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/122-an-zhuang-unitree-ros2.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/122-an-zhuang-unitree-ros2.html">
+            
+                    
+                    1.2.2 安装 Unitree ROS2
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2.3" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/123-wang-luo-pei-zhi.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/123-wang-luo-pei-zhi.html">
+            
+                    
+                    1.2.3 网络配置
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2.4" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/124-lian-jie-ce-shi.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/124-lian-jie-ce-shi.html">
+            
+                    
+                    1.2.4 连接测试
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2.5" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/125-bian-yi-bing-ce-shi-li-cheng.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/125-bian-yi-bing-ce-shi-li-cheng.html">
+            
+                    
+                    1.2.5 编译并测试例程
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.2.6" data-path="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/126-kai-fa-gong-ju-jian-yi.html">
+            
+                <a href="../../chapter1/12-ros2kai-fa-huan-jing-da-jian/126-kai-fa-gong-ju-jian-yi.html">
+            
+                    
+                    1.2.6 开发工具建议
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.3" data-path="../../chapter1/13-go2kai-fa-kuai-su-ti-yan.html">
+            
+                <a href="../../chapter1/13-go2kai-fa-kuai-su-ti-yan.html">
+            
+                    
+                    1.3 go2开发快速体验
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.2.3.1" data-path="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/131-an-li-jian-jie.html">
+            
+                <a href="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/131-an-li-jian-jie.html">
+            
+                    
+                    1.3.1 案例简介
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.3.2" data-path="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/132-helloworld-c++.html">
+            
+                <a href="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/132-helloworld-c++.html">
+            
+                    
+                    1.3.2 HelloWorld (C++)
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.3.3" data-path="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/133-helloworld-python.html">
+            
+                <a href="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/133-helloworld-python.html">
+            
+                    
+                    1.3.3 HelloWorld (Python)
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.3.4" data-path="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/134-yun-xing-you-hua.html">
+            
+                <a href="../../chapter1/13-go2kai-fa-kuai-su-ti-yan/134-yun-xing-you-hua.html">
+            
+                    
+                    1.3.4 运行优化
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.2.4" data-path="../../chapter1/14-ben-zhang-xiao-jie.html">
+            
+                <a href="../../chapter1/14-ben-zhang-xiao-jie.html">
+            
+                    
+                    1.4 本章小结
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian.html">
+            
+                    
+                    第2章 unitree go2 消息接口
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.3.1" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu.html">
+            
+                    
+                    2.1 状态获取
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.3.1.1" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/21-gao-ceng-zhuang-tai-huo-qu.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/21-gao-ceng-zhuang-tai-huo-qu.html">
+            
+                    
+                    2.1.1 高层状态获取
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3.1.2" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/22-di-ceng-zhuang-tai-huo-qu.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/22-di-ceng-zhuang-tai-huo-qu.html">
+            
+                    
+                    2.1.2 低层状态获取
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3.1.3" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/213-yao-kong-qi-zhuang-tai-huo-qu.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/21-zhuang-tai-huo-qu/213-yao-kong-qi-zhuang-tai-huo-qu.html">
+            
+                    
+                    2.1.3 遥控器状态获取
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3.2" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi.html">
+            
+                    
+                    2.2 机器人控制
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.3.2.1" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi/221-yun-dong-kong-zhi.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi/221-yun-dong-kong-zhi.html">
+            
+                    
+                    2.2.1 运动控制
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3.2.2" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi/222-dian-ji-kong-zhi.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/22-yun-dong-kong-zhi/222-dian-ji-kong-zhi.html">
+            
+                    
+                    2.2.2 电机控制
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.3.3" data-path="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/23-ben-zhang-xiao-jie.html">
+            
+                <a href="../../di-er-zhang-unitree-go2-qu-dong-bao-shi-xian/23-ben-zhang-xiao-jie.html">
+            
+                    
+                    2.3 本章小结
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4" data-path="../../di-sanzhang-unitree-go2-qu-dong-bao-shi-xian.html">
+            
+                <a href="../../di-sanzhang-unitree-go2-qu-dong-bao-shi-xian.html">
+            
+                    
+                    第3章 unitree go2 ROS2基础功能包
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.4.1" data-path="../31-yuan-cheng-kong-zhi-shi-xian.html">
+            
+                <a href="../31-yuan-cheng-kong-zhi-shi-xian.html">
+            
+                    
+                    3.1 键盘控制
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.4.1.1" data-path="../31-yuan-cheng-kong-zhi-shi-xian/321-gong-neng-jian-jie.html">
+            
+                <a href="../31-yuan-cheng-kong-zhi-shi-xian/321-gong-neng-jian-jie.html">
+            
+                    
+                    3.1.1 功能简介以及实现分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.1.2" data-path="../31-yuan-cheng-kong-zhi-shi-xian/322-gong-neng-shi-xian.html">
+            
+                <a href="../31-yuan-cheng-kong-zhi-shi-xian/322-gong-neng-shi-xian.html">
+            
+                    
+                    3.1.2 键盘控制实现
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.2" data-path="../32-ros2-twistxiao-xi-qiao-jie.html">
+            
+                <a href="../32-ros2-twistxiao-xi-qiao-jie.html">
+            
+                    
+                    3.2 ROS2 Twist消息桥接
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.4.2.1" data-path="../32-ros2-twistxiao-xi-qiao-jie/331-gong-neng-jian-jie.html">
+            
+                <a href="../32-ros2-twistxiao-xi-qiao-jie/331-gong-neng-jian-jie.html">
+            
+                    
+                    3.2.1 功能简介以及实现分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.2.2" data-path="../32-ros2-twistxiao-xi-qiao-jie/332-gong-neng-shi-xian.html">
+            
+                <a href="../32-ros2-twistxiao-xi-qiao-jie/332-gong-neng-shi-xian.html">
+            
+                    
+                    3.2.2 桥接功能实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.2.3" data-path="../32-ros2-twistxiao-xi-qiao-jie/323-qiao-jie-gong-neng-shi-xian-ff08-python.html">
+            
+                <a href="../32-ros2-twistxiao-xi-qiao-jie/323-qiao-jie-gong-neng-shi-xian-ff08-python.html">
+            
+                    
+                    3.2.3 桥接功能实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.3" data-path="../33-ji-qi-ren-mo-xing-ke-shi-hua.html">
+            
+                <a href="../33-ji-qi-ren-mo-xing-ke-shi-hua.html">
+            
+                    
+                    3.3 机器人模型可视化
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.4.3.1" data-path="../33-ji-qi-ren-mo-xing-ke-shi-hua/311-urdfwen-jian.html">
+            
+                <a href="../33-ji-qi-ren-mo-xing-ke-shi-hua/311-urdfwen-jian.html">
+            
+                    
+                    3.3.1 功能简介以及实现分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.3.2" data-path="../33-ji-qi-ren-mo-xing-ke-shi-hua/312-gong-neng-bao-shi-xian.html">
+            
+                <a href="../33-ji-qi-ren-mo-xing-ke-shi-hua/312-gong-neng-bao-shi-xian.html">
+            
+                    
+                    3.3.2 可视化功能实现
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.4" data-path="../34-ros2qu-dong-bao.html">
+            
+                <a href="../34-ros2qu-dong-bao.html">
+            
+                    
+                    3.4 ROS2驱动包
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.4.4.1" data-path="341-gong-neng-jian-jie.html">
+            
+                <a href="341-gong-neng-jian-jie.html">
+            
+                    
+                    3.4.1 功能简介以及实现分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.4.2" data-path="342-gong-neng-bao-shi-xian.html">
+            
+                <a href="342-gong-neng-bao-shi-xian.html">
+            
+                    
+                    3.4.2 驱动包实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter active" data-level="1.4.4.3" data-path="343-qu-dong-baoshi-xian-ff08-python.html">
+            
+                <a href="343-qu-dong-baoshi-xian-ff08-python.html">
+            
+                    
+                    3.4.3 驱动包实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.4.5" data-path="../35-ben-zhang-xiao-jie.html">
+            
+                <a href="../35-ben-zhang-xiao-jie.html">
+            
+                    
+                    3.5 本章小结
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li.html">
+            
+                    
+                    第4章 unitree go2 例程
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.5.1" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin.html">
+            
+                    
+                    4.1 go2 巡航与位置获取
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.5.1.1" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/412-go2-xun-hang-an-li-yi-ji-an-li-fen-xi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/412-go2-xun-hang-an-li-yi-ji-an-li-fen-xi.html">
+            
+                    
+                    4.1.1 go2 巡航案例以及案例分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.1.2" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/412-go2-xun-hang-an-li-shi-xian-ff08-c-++.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/412-go2-xun-hang-an-li-shi-xian-ff08-c-++.html">
+            
+                    
+                    4.1.2 go2 巡航案例实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.1.3" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/413-go2-xun-hang-an-li-shi-xian-ff08-python.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/413-go2-xun-hang-an-li-shi-xian-ff08-python.html">
+            
+                    
+                    4.1.3 go2 巡航案例实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.1.4" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/414-go2-wei-zhi-huo-qu-an-li-yi-ji-an-li-fen-xi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/414-go2-wei-zhi-huo-qu-an-li-yi-ji-an-li-fen-xi.html">
+            
+                    
+                    4.1.4 go2 位置获取案例以及案例分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.1.5" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/415-go2-wei-zhi-huo-qu-an-li-shi-xian-ff08-c-++.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/415-go2-wei-zhi-huo-qu-an-li-shi-xian-ff08-c-++.html">
+            
+                    
+                    4.1.5 go2 位置获取案例实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.1.6" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/416-go2-wei-zhi-huo-qu-an-li-shi-xian-ff08-python.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/41-hua-ti-tong-xin/416-go2-wei-zhi-huo-qu-an-li-shi-xian-ff08-python.html">
+            
+                    
+                    4.1.6 go2 位置获取案例实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.2" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin.html">
+            
+                    
+                    4.2 go2 巡航启停
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.5.2.1" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/421-go2-xun-hang-qi-ting-an-li-yi-ji-an-li-fen-xi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/421-go2-xun-hang-qi-ting-an-li-yi-ji-an-li-fen-xi.html">
+            
+                    
+                    4.2.1 go2 巡航启停案例以及案例分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.2.2" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/422-fu-wu-tong-xin-jie-kou-ding-yi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/422-fu-wu-tong-xin-jie-kou-ding-yi.html">
+            
+                    
+                    4.2.2 服务通信接口定义
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.2.3" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/423-go2-xun-hang-qi-ting-an-li-shi-xian-ff08-c-++.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/423-go2-xun-hang-qi-ting-an-li-shi-xian-ff08-c-++.html">
+            
+                    
+                    4.2.3 go2 巡航启停案例实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.2.4" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/424-go2-xun-hang-qi-ting-an-li-shi-xian-ff08-python.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/42-fu-wu-tong-xin/424-go2-xun-hang-qi-ting-an-li-shi-xian-ff08-python.html">
+            
+                    
+                    4.2.4 go2 巡航启停案例实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.3" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin.html">
+            
+                    
+                    4.3 go2 导航
+            
+                </a>
+            
+
+            
+            <ul class="articles">
+                
+    
+        <li class="chapter " data-level="1.5.3.1" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/431-go2-dao-hang-an-li-yi-ji-an-li-fen-xi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/431-go2-dao-hang-an-li-yi-ji-an-li-fen-xi.html">
+            
+                    
+                    4.3.1 go2 导航案例以及案例分析
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.3.2" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/432-dong-zuo-tong-xin-jie-kou-ding-yi.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/432-dong-zuo-tong-xin-jie-kou-ding-yi.html">
+            
+                    
+                    4.3.2 动作通信接口定义
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.3.3" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/433-go2-dao-hang-an-li-shi-xian-ff08-c-++.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/433-go2-dao-hang-an-li-shi-xian-ff08-c-++.html">
+            
+                    
+                    4.3.3 go2 导航案例实现（C++）
+            
+                </a>
+            
+
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.3.4" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/434-go2-dao-hang-an-li-shi-xian-ff08-python.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/43-actiontong-xin/434-go2-dao-hang-an-li-shi-xian-ff08-python.html">
+            
+                    
+                    4.3.4 go2 导航案例实现（Python）
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.5.4" data-path="../../di-si-zhang-unitree-go2-tong-xin-shi-li/45-ben-zhang-xiao-jie.html">
+            
+                <a href="../../di-si-zhang-unitree-go2-tong-xin-shi-li/45-ben-zhang-xiao-jie.html">
+            
+                    
+                    4.4 本章小结
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+            </ul>
+            
+        </li>
+    
+        <li class="chapter " data-level="1.6" data-path="../../zong-jie.html">
+            
+                <a href="../../zong-jie.html">
+            
+                    
+                    总结
+            
+                </a>
+            
+
+            
+        </li>
+    
+
+    
+
+    <li class="divider"></li>
+
+    <li>
+        <a href="https://www.gitbook.com" target="blank" class="gitbook-link">
+            Published with GitBook
+        </a>
+    </li>
+</ul>
+
+
+                </nav>
+            
+        
+    </div>
+
+    <div class="book-body">
+        
+            <div class="body-inner">
+                
+                    
+
+<div class="book-header" role="navigation">
+    
+
+    <!-- Title -->
+    <h1>
+        <i class="fa fa-circle-o-notch fa-spin"></i>
+        <a href="../.." >3.4.3 驱动包实现（Python）</a>
+    </h1>
+</div>
+
+
+
+
+                    <div class="page-wrapper" tabindex="-1" role="main">
+                        <div class="page-inner">
+                            
+<div id="book-search-results">
+    <div class="search-noresults">
+    
+                                <section class="normal markdown-section">
+                                
+                                <h3 id="343-&#x9A71;&#x52A8;&#x5305;&#x5B9E;&#x73B0;&#xFF08;python&#xFF09;">3.4.3 &#x9A71;&#x52A8;&#x5305;&#x5B9E;&#x73B0;&#xFF08;Python&#xFF09;</h3>
+<h4 id="1&#x8282;&#x70B9;&#x5B9E;&#x73B0;">1.&#x8282;&#x70B9;&#x5B9E;&#x73B0;</h4>
+<p>&#x529F;&#x80FD;&#x5305; go2_driver_py &#x7684; go2_driver_py &#x76EE;&#x5F55;&#x4E0B;&#xFF0C;&#x65B0;&#x5EFA; Python &#x6587;&#x4EF6; driver.py&#xFF0C;&#x5E76;&#x7F16;&#x8F91;&#x6587;&#x4EF6;&#xFF0C;&#x8F93;&#x5165;&#x5982;&#x4E0B;&#x5185;&#x5BB9;&#xFF1A;</p>
+<pre><code class="lang-cpp">import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from unitree_go.msg import LowState, SportModeState
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import TransformStamped
+from tf2_ros import TransformBroadcaster
+
+class Driver(Node):
+    def __init__(self):
+        super().__init__(&apos;driver_py&apos;)
+
+        # &#x521D;&#x59CB;&#x5316;&#x53C2;&#x6570;
+        self.declare_parameter(&apos;publish_odom_tf&apos;, True)
+        self.declare_parameter(&apos;odom_frame&apos;, &apos;odom&apos;)
+        self.declare_parameter(&apos;base_frame&apos;, &apos;base&apos;)
+
+        self.publish_odom_tf = self.get_parameter(&apos;publish_odom_tf&apos;).value
+        self.odom_frame = self.get_parameter(&apos;odom_frame&apos;).value
+        self.base_frame = self.get_parameter(&apos;base_frame&apos;).value
+
+        # &#x53D1;&#x5E03;&#x91CC;&#x7A0B;&#x8BA1;&#x6D88;&#x606F;
+        self.sport_mode_state_suber_ = self.create_subscription(
+            SportModeState, &apos;lf/sportmodestate&apos;, self.state_callback, 10)
+        self.odom_pub_ = self.create_publisher(Odometry, &apos;odom&apos;, 10)
+        self.tf_broadcaster_ = TransformBroadcaster(self)
+
+        # &#x53D1;&#x5E03;&#x5173;&#x8282;&#x6D88;&#x606F;
+        self.joint_names_ = [
+            &quot;FL_hip_joint&quot;, &quot;FL_thigh_joint&quot;, &quot;FL_calf_joint&quot;,
+            &quot;FR_hip_joint&quot;, &quot;FR_thigh_joint&quot;, &quot;FR_calf_joint&quot;,
+            &quot;RL_hip_joint&quot;, &quot;RL_thigh_joint&quot;, &quot;RL_calf_joint&quot;,
+            &quot;RR_hip_joint&quot;, &quot;RR_thigh_joint&quot;, &quot;RR_calf_joint&quot;
+        ]
+        self.joint_state_pub_ = self.create_publisher(JointState, &apos;/joint_states&apos;, 10)
+        self.low_state_suber_ = self.create_subscription(
+            LowState, &apos;lf/lowstate&apos;, self.low_state_callback, 10)
+
+    def state_callback(self, data):
+        # &#x521B;&#x5EFA;&#x91CC;&#x7A0B;&#x8BA1;&#x6D88;&#x606F;
+        odom_msg = Odometry()
+
+        # &#x8BBE;&#x7F6E;&#x65F6;&#x95F4;&#x6233;
+        odom_msg.header.stamp = self.get_clock().now().to_msg()
+        odom_msg.header.frame_id = self.odom_frame
+        odom_msg.child_frame_id = self.base_frame
+
+        # &#x8BBE;&#x7F6E;&#x4F4D;&#x7F6E;
+        odom_msg.pose.pose.position.x = float(data.position[0])
+        odom_msg.pose.pose.position.y = float(data.position[1])
+        odom_msg.pose.pose.position.z = float(data.position[2])
+
+        # &#x8BBE;&#x7F6E;&#x59FF;&#x6001;
+        odom_msg.pose.pose.orientation.w = float(data.imu_state.quaternion[0])
+        odom_msg.pose.pose.orientation.x = float(data.imu_state.quaternion[1])
+        odom_msg.pose.pose.orientation.y = float(data.imu_state.quaternion[2])
+        odom_msg.pose.pose.orientation.z = float(data.imu_state.quaternion[3])
+
+        # &#x8BBE;&#x7F6E;&#x7EBF;&#x901F;&#x5EA6;
+        odom_msg.twist.twist.linear.x = float(data.velocity[0])
+        odom_msg.twist.twist.linear.y = float(data.velocity[1])
+        odom_msg.twist.twist.linear.z = float(data.velocity[2])
+
+        # &#x8BBE;&#x7F6E;&#x89D2;&#x901F;&#x5EA6;
+        odom_msg.twist.twist.angular.z = float(data.yaw_speed)
+
+        # &#x53D1;&#x5E03;&#x91CC;&#x7A0B;&#x8BA1;&#x6D88;&#x606F;
+        self.odom_pub_.publish(odom_msg)
+
+        # &#x6839;&#x636E;&#x53C2;&#x6570;&#x9009;&#x62E9;&#x662F;&#x5426;&#x53D1;&#x5E03;&#x5750;&#x6807;&#x53D8;&#x6362;
+        if self.publish_odom_tf:
+            transformStamped = TransformStamped()
+
+            # &#x8BBE;&#x7F6E;&#x65F6;&#x95F4;&#x6233;
+            transformStamped.header.stamp = self.get_clock().now().to_msg()
+            transformStamped.header.frame_id = self.odom_frame
+            transformStamped.child_frame_id = self.base_frame
+
+            # &#x8BBE;&#x7F6E;&#x5E73;&#x79FB;
+            transformStamped.transform.translation.x = float(data.position[0])
+            transformStamped.transform.translation.y = float(data.position[1])
+            transformStamped.transform.translation.z = float(data.position[2])
+
+            # &#x8BBE;&#x7F6E;&#x65CB;&#x8F6C;
+            transformStamped.transform.rotation = odom_msg.pose.pose.orientation
+
+            # &#x53D1;&#x5E03;&#x5750;&#x6807;&#x53D8;&#x6362;
+            self.tf_broadcaster_.sendTransform(transformStamped)
+
+    def low_state_callback(self, data):
+        # &#x586B;&#x5145;&#x5173;&#x8282;&#x72B6;&#x6001;&#x6D88;&#x606F;
+        joint_state_msg = JointState()
+        joint_state_msg.header.stamp = self.get_clock().now().to_msg()
+        joint_state_msg.name = self.joint_names_
+        ms = data.motor_state
+        for i in range(12):
+            joint_state_msg.position.append(float(ms[i].q))  # &#x786E;&#x4FDD;&#x8F6C;&#x6362;&#x4E3A;float
+        self.joint_state_pub_.publish(joint_state_msg)
+
+def main(args=None):
+    rclpy.init(args=args)
+    driver = Driver()
+    rclpy.spin(driver)
+    rclpy.shutdown()
+
+if __name__ == &apos;__main__&apos;:
+    main()
+</code></pre>
+<h4 id="2&#x7F16;&#x8F91;&#x914D;&#x7F6E;&#x6587;&#x4EF6;">2.&#x7F16;&#x5199;params&#x3001;rviz&#x3001;launch&#x6587;&#x4EF6; </h4>
+<p><strong>1.params&#x6587;&#x4EF6;</strong></p>
+<p>&#x5728;&#x5F53;&#x524D;&#x529F;&#x80FD;&#x5305;&#x4E0B;&#x65B0;&#x5EFA;&#x76EE;&#x5F55; params&#xFF0C;params &#x76EE;&#x5F55;&#x4E2D;&#x65B0;&#x5EFA; driver.yaml &#x6587;&#x4EF6;&#xFF0C;&#x5E76;&#x8F93;&#x5165;&#x5982;&#x4E0B;&#x5185;&#x5BB9;&#xFF1A;</p>
+<pre><code>/**:
+  ros__parameters:
+    base_frame: base
+    odom_frame: odom
+    publish_odom_tf: true
+    use_sim_time: false
+</code></pre><p><strong>2.rviz&#x6587;&#x4EF6;</strong></p>
+<p>&#x5728;&#x5F53;&#x524D;&#x529F;&#x80FD;&#x5305;&#x4E0B;&#x65B0;&#x5EFA;&#x76EE;&#x5F55; rviz&#x3002;&#x518D;&#x542F;&#x52A8; rviz2 &#x5E76;&#x5C06;&#x914D;&#x7F6E;&#x6587;&#x4EF6;&#x547D;&#x540D;&#x4E3A;display.rviz&#xFF0C;&#x7136;&#x540E;&#x4FDD;&#x5B58;&#x81F3;&#x8BE5;&#x76EE;&#x5F55;&#x4E0B;&#x4EE5;&#x4F5C;&#x5907;&#x7528;&#x3002;</p>
+<p><strong>3.launch&#x6587;&#x4EF6;</strong></p>
+<p>&#x5728;&#x5F53;&#x524D;&#x529F;&#x80FD;&#x5305;&#x4E0B;&#x65B0;&#x5EFA;&#x76EE;&#x5F55; launch&#xFF0C;launch &#x76EE;&#x5F55;&#x4E2D;&#x65B0;&#x5EFA; driver.launch.py&#xFF0C;&#x5E76;&#x8F93;&#x5165;&#x5982;&#x4E0B;&#x5185;&#x5BB9;&#xFF1A;</p>
+<pre><code class="lang-py"><span class="hljs-keyword">from</span> launch <span class="hljs-keyword">import</span> LaunchDescription
+<span class="hljs-keyword">from</span> launch_ros.actions <span class="hljs-keyword">import</span> Node
+<span class="hljs-comment"># &#x5C01;&#x88C5;&#x7EC8;&#x7AEF;&#x6307;&#x4EE4;&#x76F8;&#x5173;&#x7C7B;--------------</span>
+<span class="hljs-comment"># from launch.actions import ExecuteProcess</span>
+<span class="hljs-comment"># from launch.substitutions import FindExecutable</span>
+<span class="hljs-comment"># &#x53C2;&#x6570;&#x58F0;&#x660E;&#x4E0E;&#x83B7;&#x53D6;-----------------</span>
+<span class="hljs-keyword">from</span> launch.actions <span class="hljs-keyword">import</span> DeclareLaunchArgument
+<span class="hljs-keyword">from</span> launch.substitutions <span class="hljs-keyword">import</span> LaunchConfiguration
+<span class="hljs-comment"># &#x6587;&#x4EF6;&#x5305;&#x542B;&#x76F8;&#x5173;-------------------</span>
+<span class="hljs-keyword">from</span> launch.actions <span class="hljs-keyword">import</span> IncludeLaunchDescription
+<span class="hljs-keyword">from</span> launch.launch_description_sources <span class="hljs-keyword">import</span> PythonLaunchDescriptionSource
+<span class="hljs-comment"># &#x5206;&#x7EC4;&#x76F8;&#x5173;----------------------</span>
+<span class="hljs-comment"># from launch_ros.actions import PushRosNamespace</span>
+<span class="hljs-comment"># from launch.actions import GroupAction</span>
+<span class="hljs-comment"># &#x4E8B;&#x4EF6;&#x76F8;&#x5173;----------------------</span>
+<span class="hljs-comment"># from launch.event_handlers import OnProcessStart, OnProcessExit</span>
+<span class="hljs-comment"># from launch.actions import ExecuteProcess, RegisterEventHandler,LogInfo</span>
+<span class="hljs-comment"># &#x83B7;&#x53D6;&#x529F;&#x80FD;&#x5305;&#x4E0B;share&#x76EE;&#x5F55;&#x8DEF;&#x5F84;-------</span>
+<span class="hljs-keyword">from</span> ament_index_python.packages <span class="hljs-keyword">import</span> get_package_share_directory
+<span class="hljs-keyword">from</span> launch.conditions <span class="hljs-keyword">import</span> IfCondition
+
+
+<span class="hljs-keyword">import</span> os
+
+<span class="hljs-function"><span class="hljs-keyword">def</span> <span class="hljs-title">generate_launch_description</span><span class="hljs-params">()</span>:</span>
+
+    go2_descrition_pkg = get_package_share_directory(<span class="hljs-string">&quot;go2_description&quot;</span>)
+    go2_driver_pkg = get_package_share_directory(<span class="hljs-string">&quot;go2_driver_py&quot;</span>)
+
+    <span class="hljs-comment"># &#x58F0;&#x660E;&#x4E00;&#x4E2A;&#x5E03;&#x5C14;&#x53C2;&#x6570;&#xFF0C;&#x7528;&#x4E8E;&#x63A7;&#x5236;&#x662F;&#x5426;&#x542F;&#x52A8; rviz</span>
+    use_rviz = DeclareLaunchArgument(
+        name=<span class="hljs-string">&quot;use_rviz&quot;</span>,
+        default_value=<span class="hljs-string">&quot;true&quot;</span>,  <span class="hljs-comment"># &#x9ED8;&#x8BA4;&#x503C;&#x4E3A; true</span>
+    )
+
+    <span class="hljs-keyword">return</span> LaunchDescription([
+        use_rviz,
+        IncludeLaunchDescription(
+            launch_description_source=PythonLaunchDescriptionSource(
+                launch_file_path=os.path.join(go2_descrition_pkg,<span class="hljs-string">&quot;launch&quot;</span>,<span class="hljs-string">&quot;display.launch.py&quot;</span>)
+            ),
+            launch_arguments=[(<span class="hljs-string">&quot;use_joint_state_publisher&quot;</span>,<span class="hljs-string">&quot;false&quot;</span>)]
+        ),
+        Node(
+            package=<span class="hljs-string">&quot;go2_driver_py&quot;</span>,
+            executable=<span class="hljs-string">&quot;driver&quot;</span>,
+            output=<span class="hljs-string">&quot;screen&quot;</span>,
+            parameters=[os.path.join(go2_driver_pkg,<span class="hljs-string">&quot;params&quot;</span>,<span class="hljs-string">&quot;driver.yaml&quot;</span>)]
+        ),
+        Node(
+            package=<span class="hljs-string">&quot;rviz2&quot;</span>,
+            executable=<span class="hljs-string">&quot;rviz2&quot;</span>,
+            condition=IfCondition(LaunchConfiguration(<span class="hljs-string">&quot;use_rviz&quot;</span>)),
+            arguments=[<span class="hljs-string">&quot;-d&quot;</span>,os.path.join(go2_driver_pkg,<span class="hljs-string">&quot;rviz&quot;</span>,<span class="hljs-string">&quot;display.rviz&quot;</span>)]
+        ),
+        <span class="hljs-comment"># &#x9759;&#x6001;&#x5750;&#x6807;&#x53D8;&#x6362;</span>
+        <span class="hljs-comment"># &#x5B98;&#x65B9;URDF&#x6587;&#x4EF6;&#x4E2D;&#x7684;&#x96F7;&#x8FBE;&#x5750;&#x6807;&#x7CFB;&#x662F;radar&#xFF0C;&#x53D1;&#x5E03;&#x7684;&#x70B9;&#x4E91;&#x4E2D;&#x4F7F;&#x7528;&#x7684;&#x5750;&#x6807;&#x7CFB;&#x662F;utlidar_lidar,</span>
+        <span class="hljs-comment"># &#x4E3A;&#x4E86;&#x96F7;&#x8FBE;&#x80FD;&#x6B63;&#x5E38;&#x663E;&#x793A;,&#x53EF;&#x4EE5;&#x76F4;&#x63A5;&#x4FEE;&#x6539;URDF&#x4E2D;&#x7684;&#x5750;&#x6807;&#x7CFB;&#x4E3A;utlidar_lidar&#xFF0C;</span>
+        <span class="hljs-comment"># &#x6216;&#x8005;&#x53EF;&#x4EE5;&#x5C06;utlidar_lidar&#x7B49;&#x4F4D;&#x59FF;&#x7684;&#x53D8;&#x6362;&#x81F3;radar</span>
+        Node(
+            package=<span class="hljs-string">&quot;tf2_ros&quot;</span>,
+            executable=<span class="hljs-string">&quot;static_transform_publisher&quot;</span>,
+            arguments=[<span class="hljs-string">&quot;--frame-id&quot;</span>, <span class="hljs-string">&quot;radar&quot;</span>, <span class="hljs-string">&quot;--child-frame-id&quot;</span>, <span class="hljs-string">&quot;utlidar_lidar&quot;</span>]
+        ),
+        <span class="hljs-comment"># &#x901F;&#x5EA6;&#x6307;&#x4EE4;&#x8F6C;&#x6362;&#x8282;&#x70B9;&#xFF0C;&#x53EF;&#x4EE5;&#x5C06;geometry_msgs::msg::Twist &#x8F6C;&#x6362;&#x6210; unitree_api::msg::Request &#x6D88;&#x606F;</span>
+        Node(
+            package=<span class="hljs-string">&quot;go2_twist_bridge_py&quot;</span>,
+            executable=<span class="hljs-string">&quot;twist_bridge&quot;</span>
+        )
+    ])
+</code></pre>
+<h4 id="2&#x7F16;&#x8F91;&#x914D;&#x7F6E;&#x6587;&#x4EF6;">3.&#x7F16;&#x8F91;&#x914D;&#x7F6E;&#x6587;&#x4EF6; </h4>
+<h5 id="1packagesxml">1.package.xml </h5>
+<p>&#x5728;&#x521B;&#x5EFA;&#x529F;&#x80FD;&#x5305;&#x65F6;&#xFF0C;&#x6240;&#x4F9D;&#x8D56;&#x7684;&#x529F;&#x80FD;&#x5305;&#x5DF2;&#x7ECF;&#x81EA;&#x52A8;&#x914D;&#x7F6E;&#x4E86;&#xFF0C;&#x914D;&#x7F6E;&#x5185;&#x5BB9;&#x5982;&#x4E0B;&#xFF1A;</p>
+<pre><code>&lt;depend&gt;rclpy&lt;/depend&gt;
+&lt;depend&gt;unitree_go&lt;/depend&gt;
+&lt;depend&gt;sensor_msgs&lt;/depend&gt;
+&lt;depend&gt;tf2_ros&lt;/depend&gt;
+&lt;depend&gt;geometry_msgs&lt;/depend&gt;
+&lt;depend&gt;nav_msgs&lt;/depend&gt;
+</code></pre><h5 id="2cmakeliststxt">2.setup.py </h5>
+<p>setup.py&#x6587;&#x4EF6;&#x4FEE;&#x6539;&#x7684;&#x5185;&#x5BB9;&#x5982;&#x4E0B;&#xFF1A;</p>
+<pre><code>......
+data_files=[
+    ......
+    (&apos;share/&apos; + package_name + &quot;/launch&quot;, glob(&quot;launch/*.launch.py&quot;)),
+    (&apos;share/&apos; + package_name + &quot;/params&quot;, glob(&quot;params/*.yaml&quot;)),
+    (&apos;share/&apos; + package_name + &quot;/rviz&quot;, glob(&quot;rviz/*.rviz&quot;)),
+],
+......
+entry_points={
+    &apos;console_scripts&apos;: [
+        &apos;driver = go2_driver_py.driver:main&apos;
+    ],
+},
+......
+</code></pre><h4 id="3&#x7F16;&#x8BD1;">3.&#x7F16;&#x8BD1; </h4>
+<p>&#x7EC8;&#x7AEF;&#x4E2D;&#x8FDB;&#x5165;&#x5F53;&#x524D;&#x5DE5;&#x4F5C;&#x7A7A;&#x95F4;&#xFF0C;&#x7F16;&#x8BD1;&#x529F;&#x80FD;&#x5305;&#xFF1A;</p>
+<pre><code>colcon build --packages-select go2_driver_py
+</code></pre><h4 id="4&#x6267;&#x884C;">4.&#x6267;&#x884C; </h4>
+<p>&#x5728;&#x5F53;&#x524D;&#x5DE5;&#x4F5C;&#x7A7A;&#x95F4;&#x4E0B;&#xFF0C;&#x542F;&#x52A8;&#x7EC8;&#x7AEF;&#xFF0C;&#x5E76;&#x8F93;&#x5165;&#x5982;&#x4E0B;&#x6307;&#x4EE4;&#xFF1A;</p>
+<pre><code>. install/setup.bash
+ros2 launch go2_driver_py driver.launch.py
+</code></pre><p>&#x540E;&#x7EED;&#x64CD;&#x4F5C;&#x53EF;&#x53C2;&#x8003;<strong> 3.4.2 &#x9A71;&#x52A8;&#x5305;&#x5B9E;&#x73B0;&#xFF08;C++&#xFF09;</strong>&#x4E2D;&#x7684;&#x6267;&#x884C;&#x64CD;&#x4F5C;&#x3002;</p>
+
+                                
+                                </section>
+                            
+    </div>
+    <div class="search-results">
+        <div class="has-results">
+            
+            <h1 class="search-results-title"><span class='search-results-count'></span> results matching "<span class='search-query'></span>"</h1>
+            <ul class="search-results-list"></ul>
+            
+        </div>
+        <div class="no-results">
+            
+            <h1 class="search-results-title">No results matching "<span class='search-query'></span>"</h1>
+            
+        </div>
+    </div>
+</div>
+
+                        </div>
+                    </div>
+                
+            </div>
+
+            
+                
+                <a href="342-gong-neng-bao-shi-xian.html" class="navigation navigation-prev " aria-label="Previous page: 3.4.2 驱动包实现（C++）">
+                    <i class="fa fa-angle-left"></i>
+                </a>
+                
+                
+                <a href="../35-ben-zhang-xiao-jie.html" class="navigation navigation-next " aria-label="Next page: 3.5 本章小结">
+                    <i class="fa fa-angle-right"></i>
+                </a>
+                
+            
+        
+    </div>
+
+    <script>
+        var gitbook = gitbook || [];
+        gitbook.push(function() {
+            gitbook.page.hasChanged({"page":{"title":"3.4.3 驱动包实现（Python）","level":"1.4.4.3","depth":3,"next":{"title":"3.5 本章小结","level":"1.4.5","depth":2,"path":"di-sanzhang-unitree-go2-qu-dong-bao-shi-xian/35-ben-zhang-xiao-jie.md","ref":"di-sanzhang-unitree-go2-qu-dong-bao-shi-xian/35-ben-zhang-xiao-jie.md","articles":[]},"previous":{"title":"3.4.2 驱动包实现（C++）","level":"1.4.4.2","depth":3,"path":"di-sanzhang-unitree-go2-qu-dong-bao-shi-xian/34-ros2qu-dong-bao/342-gong-neng-bao-shi-xian.md","ref":"di-sanzhang-unitree-go2-qu-dong-bao-shi-xian/34-ros2qu-dong-bao/342-gong-neng-bao-shi-xian.md","articles":[]},"dir":"ltr"},"config":{"gitbook":"*","theme":"default","variables":{},"plugins":["expandable-chapters"],"pluginsConfig":{"expandable-chapters":{},"highlight":{},"search":{},"lunr":{"maxIndexSize":1000000,"ignoreSpecialCharacters":false},"sharing":{"facebook":true,"twitter":true,"google":false,"weibo":false,"instapaper":false,"vk":false,"all":["facebook","google","twitter","weibo","instapaper"]},"fontsettings":{"theme":"white","family":"sans","size":2},"theme-default":{"styles":{"website":"styles/website.css","pdf":"styles/pdf.css","epub":"styles/epub.css","mobi":"styles/mobi.css","ebook":"styles/ebook.css","print":"styles/print.css"},"showLevel":false}},"structure":{"langs":"LANGS.md","readme":"README.md","glossary":"GLOSSARY.md","summary":"SUMMARY.md"},"pdf":{"pageNumbers":true,"fontSize":12,"fontFamily":"Arial","paperSize":"a4","chapterMark":"pagebreak","pageBreaksBefore":"/","margin":{"right":62,"left":62,"top":56,"bottom":56}},"styles":{"website":"styles/website.css","pdf":"styles/pdf.css","epub":"styles/epub.css","mobi":"styles/mobi.css","ebook":"styles/ebook.css","print":"styles/print.css"}},"file":{"path":"di-sanzhang-unitree-go2-qu-dong-bao-shi-xian/34-ros2qu-dong-bao/343-qu-dong-baoshi-xian-ff08-python.md","mtime":"2025-02-25T07:12:43.725Z","type":"markdown"},"gitbook":{"version":"3.2.3","time":"2025-02-26T06:44:38.084Z"},"basePath":"../..","book":{"language":""}});
+        });
+    </script>
+</div>
+
+        
+    <script src="../../gitbook/gitbook.js"></script>
+    <script src="../../gitbook/theme.js"></script>
+    
+        
+        <script src="../../gitbook/gitbook-plugin-expandable-chapters/expandable-chapters.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-search/search-engine.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-search/search.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-lunr/lunr.min.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-lunr/search-lunr.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-sharing/buttons.js"></script>
+        
+    
+        
+        <script src="../../gitbook/gitbook-plugin-fontsettings/fontsettings.js"></script>
+        
+    
+
+    </body>
+</html>
+

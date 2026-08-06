@@ -15,6 +15,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(fast_gicp REQUIRED)
 
 # 查找PCL，不使用IMPORTED目标方式
 find_package(PCL 1.12 REQUIRED COMPONENTS common io filters search kdtree features registration)
@@ -25,6 +26,11 @@ add_definitions(${PCL_DEFINITIONS})
 # 查找ndt_omp_ros2
 find_package(ndt_omp_ros2 REQUIRED)
 
+option(USE_FAST_GICP_CUDA "Enable fast_gicp CUDA NDT backend" OFF)
+if(USE_FAST_GICP_CUDA)
+  find_package(CUDAToolkit REQUIRED)
+endif()
+
 # Add executable
 add_executable(ndt_relocalization_node 
   src/ndt_relocalization_node.cpp
@@ -34,6 +40,7 @@ add_executable(ndt_relocalization_node
 target_include_directories(ndt_relocalization_node PRIVATE 
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
+  ${fast_gicp_INCLUDE_DIRS}
 )
 
 # Link libraries and dependencies
@@ -45,12 +52,19 @@ ament_target_dependencies(ndt_relocalization_node
   tf2_ros
   tf2_geometry_msgs
   pcl_conversions
+  fast_gicp
 )
 
 target_link_libraries(ndt_relocalization_node
   ${PCL_LIBRARIES}
   ndt_omp_ros2::ndt_omp
+  ${fast_gicp_LIBRARIES}
 )
+
+if(USE_FAST_GICP_CUDA)
+  target_compile_definitions(ndt_relocalization_node PRIVATE NDT_CUDA_ENABLED)
+  target_link_libraries(ndt_relocalization_node CUDA::cudart)
+endif()
 
 # Install
 install(TARGETS

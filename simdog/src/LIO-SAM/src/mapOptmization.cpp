@@ -16,6 +16,8 @@
 
 #include <gtsam/nonlinear/ISAM2.h>
 
+#include <filesystem>
+
 using namespace gtsam;
 
 using symbol_shorthand::X; // Pose3 (x,y,z,r,p,y)
@@ -150,6 +152,8 @@ public:
     Eigen::Affine3f incrementalOdometryAffineBack;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> br;
+    std::shared_ptr<tf2_ros::Buffer> tfBuffer;
+    std::shared_ptr<tf2_ros::TransformListener> tfListener;
 
     mapOptimization(const rclcpp::NodeOptions & options) : ParamServer("lio_sam_mapOptimization", options)
     {
@@ -164,7 +168,12 @@ public:
         pubLaserOdometryIncremental = create_publisher<nav_msgs::msg::Odometry>(
             "lio_sam/mapping/odometry_incremental", qos);
         pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
-        br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+        if (publishMapToOdom)
+        {
+            br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+            tfBuffer = std::make_shared<tf2_ros::Buffer>(get_clock());
+            tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
+        }
 
         subCloud = create_subscription<lio_sam::msg::CloudInfo>(
             "lio_sam/feature/cloud_info", qos,
@@ -178,15 +187,34 @@ public:
 
         auto saveMapService = [this](const std::shared_ptr<rmw_request_id_t> request_header, const std::shared_ptr<lio_sam::srv::SaveMap::Request> req, std::shared_ptr<lio_sam::srv::SaveMap::Response> res) -> void {
             (void)request_header;
-            string saveMapDirectory;
+            std::filesystem::path saveMapPath;
             cout << "****************************************************" << endl;
             cout << "Saving map to pcd files ..." << endl;
-            if(req->destination.empty()) saveMapDirectory = std::getenv("HOME") + savePCDDirectory;
-            else saveMapDirectory = std::getenv("HOME") + req->destination;
+            const char *home = std::getenv("HOME");
+            std::filesystem::path requestedPath = req->destination.empty()
+                ? std::filesystem::path(savePCDDirectory)
+                : std::filesystem::path(req->destination);
+            if (requestedPath.is_absolute()) {
+                saveMapPath = requestedPath;
+            } else if (home != nullptr) {
+                saveMapPath = std::filesystem::path(home) / requestedPath;
+            } else {
+                saveMapPath = requestedPath;
+            }
+            string saveMapDirectory = saveMapPath.string();
             cout << "Save destination: " << saveMapDirectory << endl;
-            // create directory and remove old files;
-            int unused = system((std::string("exec rm -r ") + saveMapDirectory).c_str());
-            unused = system((std::string("mkdir -p ") + saveMapDirectory).c_str());
+            // 仅创建目标目录；各 PCD 文件会被覆盖，不删除目录中的其他用户文件。
+            std::error_code directoryError;
+            std::filesystem::create_directories(saveMapPath, directoryError);
+            if (directoryError) {
+                RCLCPP_ERROR(
+                    this->get_logger(),
+                    "Failed to create map directory %s: %s",
+                    saveMapDirectory.c_str(),
+                    directoryError.message().c_str());
+                res->success = false;
+                return;
+            }
             // save key frame transformations
             pcl::io::savePCDFileBinary(saveMapDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
             pcl::io::savePCDFileBinary(saveMapDirectory + "/transformations.pcd", *cloudKeyPoses6D);
@@ -410,11 +438,24 @@ public:
             return;
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files ..." << endl;
-        savePCDDirectory = std::getenv("HOME") + savePCDDirectory;
-        int unused = system((std::string("exec rm -r ") + savePCDDirectory).c_str());
-        unused = system((std::string("mkdir ") + savePCDDirectory).c_str());
-        pcl::io::savePCDFileASCII(savePCDDirectory + "trajectory.pcd", *cloudKeyPoses3D);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "transformations.pcd", *cloudKeyPoses6D);
+        const char *home = std::getenv("HOME");
+        std::filesystem::path saveMapPath(savePCDDirectory);
+        if (!saveMapPath.is_absolute() && home != nullptr)
+            saveMapPath = std::filesystem::path(home) / saveMapPath;
+        std::error_code directoryError;
+        std::filesystem::create_directories(saveMapPath, directoryError);
+        if (directoryError) {
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "Failed to create map directory %s: %s",
+                saveMapPath.string().c_str(),
+                directoryError.message().c_str());
+            return;
+        }
+        pcl::io::savePCDFileASCII(
+            (saveMapPath / "trajectory.pcd").string(), *cloudKeyPoses3D);
+        pcl::io::savePCDFileASCII(
+            (saveMapPath / "transformations.pcd").string(), *cloudKeyPoses6D);
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
@@ -427,13 +468,16 @@ public:
         }
         downSizeFilterCorner.setInputCloud(globalCornerCloud);
         downSizeFilterCorner.filter(*globalCornerCloudDS);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudCorner.pcd", *globalCornerCloudDS);
+        pcl::io::savePCDFileASCII(
+            (saveMapPath / "cloudCorner.pcd").string(), *globalCornerCloudDS);
         downSizeFilterSurf.setInputCloud(globalSurfCloud);
         downSizeFilterSurf.filter(*globalSurfCloudDS);
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudSurf.pcd", *globalSurfCloudDS);
+        pcl::io::savePCDFileASCII(
+            (saveMapPath / "cloudSurf.pcd").string(), *globalSurfCloudDS);
         *globalMapCloud += *globalCornerCloud;
         *globalMapCloud += *globalSurfCloud;
-        pcl::io::savePCDFileASCII(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
+        pcl::io::savePCDFileASCII(
+            (saveMapPath / "cloudGlobal.pcd").string(), *globalMapCloud);
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files completed" << endl;
     }
@@ -1645,7 +1689,7 @@ public:
         laserOdometryROS.header.frame_id = odometryFrame;
         
         // 设置子坐标系ID，表示里程计计算的坐标系
-        laserOdometryROS.child_frame_id = "odom_mapping";
+        laserOdometryROS.child_frame_id = lidarFrame;
         
         // 从变换数组中设置位置坐标
         // transformTobeMapped[3,4,5]分别代表x, y, z坐标
@@ -1668,28 +1712,41 @@ public:
         // 发布全局里程计消息
         pubLaserOdometryGlobal->publish(laserOdometryROS);
     
-        // 发布坐标变换（TF）
-        // 重新创建用于变换的四元数
-        quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        
-        // 使用四元数和平移创建tf2变换
-        tf2::Transform t_odom_to_lidar = tf2::Transform(quat_tf, tf2::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
-        
-        // 将ROS时间转换为tf2时间点
-        tf2::TimePoint time_point = tf2_ros::fromRclcpp(timeLaserInfoStamp);
-        
-        // 创建带有时间和坐标系信息的带时间戳变换
-        tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, odometryFrame);
-        
-        // 将带时间戳变换转换为ROS变换消息
-        geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
-        tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
-        
-        // 设置变换的子坐标系ID
-        trans_odom_to_lidar.child_frame_id = "lidar_link";
-        
-        // 广播变换
-        br->sendTransform(trans_odom_to_lidar);
+        // LIO-SAM 求得 map -> lidar；结合 CHAMP/EKF 的 odom -> lidar，
+        // 只发布 map -> odom，避免给 URDF 中的 velodyne 再指定第二个父坐标系。
+        if (publishMapToOdom)
+        {
+            try
+            {
+                const auto odomToLidarMsg = tfBuffer->lookupTransform(
+                    localOdomFrame, lidarFrame, rclcpp::Time(0));
+                tf2::Transform odomToLidar;
+                tf2::fromMsg(odomToLidarMsg.transform, odomToLidar);
+
+                const tf2::Transform mapToLidar(
+                    quat_tf,
+                    tf2::Vector3(
+                        transformTobeMapped[3],
+                        transformTobeMapped[4],
+                        transformTobeMapped[5]));
+                const tf2::Transform mapToOdom = mapToLidar * odomToLidar.inverse();
+
+                geometry_msgs::msg::TransformStamped transform;
+                transform.header.stamp = timeLaserInfoStamp;
+                transform.header.frame_id = mapFrame;
+                transform.child_frame_id = localOdomFrame;
+                transform.transform = tf2::toMsg(mapToOdom);
+                br->sendTransform(transform);
+            }
+            catch (const tf2::TransformException & ex)
+            {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 5000,
+                    "暂时无法由 %s -> %s 计算 %s -> %s：%s",
+                    localOdomFrame.c_str(), lidarFrame.c_str(),
+                    mapFrame.c_str(), localOdomFrame.c_str(), ex.what());
+            }
+        }
     
         // 发布增量里程计
         // 使用静态变量在函数调用间保持状态
@@ -1742,7 +1799,7 @@ public:
             // 更新增量里程计消息
             laserOdomIncremental.header.stamp = timeLaserInfoStamp;
             laserOdomIncremental.header.frame_id = odometryFrame;
-            laserOdomIncremental.child_frame_id = "odom_mapping";
+            laserOdomIncremental.child_frame_id = lidarFrame;
             laserOdomIncremental.pose.pose.position.x = x;
             laserOdomIncremental.pose.pose.position.y = y;
             laserOdomIncremental.pose.pose.position.z = z;
@@ -1770,7 +1827,7 @@ public:
     //     nav_msgs::msg::Odometry laserOdometryROS;
     //     laserOdometryROS.header.stamp = timeLaserInfoStamp;
     //     laserOdometryROS.header.frame_id = odometryFrame;
-    //     laserOdometryROS.child_frame_id = "odom_mapping";
+    //     laserOdometryROS.child_frame_id = lidarFrame;
     //     laserOdometryROS.pose.pose.position.x = transformTobeMapped[3];
     //     laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
     //     laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
@@ -1788,7 +1845,7 @@ public:
     //     tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, odometryFrame);
     //     geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
     //     tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
-    //     trans_odom_to_lidar.child_frame_id = "lidar_link";
+    //     trans_odom_to_lidar.child_frame_id = lidarFrame;
     //     br->sendTransform(trans_odom_to_lidar);
 
     //     // Publish odometry for ROS (incremental)
@@ -1829,7 +1886,7 @@ public:
     //         }
     //         laserOdomIncremental.header.stamp = timeLaserInfoStamp;
     //         laserOdomIncremental.header.frame_id = odometryFrame;
-    //         laserOdomIncremental.child_frame_id = "odom_mapping";
+    //         laserOdomIncremental.child_frame_id = lidarFrame;
     //         laserOdomIncremental.pose.pose.position.x = x;
     //         laserOdomIncremental.pose.pose.position.y = y;
     //         laserOdomIncremental.pose.pose.position.z = z;

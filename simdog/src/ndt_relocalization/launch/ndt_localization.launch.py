@@ -8,12 +8,16 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     # 定义参数
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    map_path = LaunchConfiguration('map_path', default='/home/lx/tmp/map_indoor/GlobalMap.pcd')
+    default_map_path = os.path.join(
+        os.path.expanduser('~'), 'go2_maps', 'latest', 'GlobalMap.pcd')
+    map_path = LaunchConfiguration('map_path', default=default_map_path)
     map_topic = LaunchConfiguration('map_topic', default='/global_map')
     input_cloud_topic = LaunchConfiguration('input_cloud_topic', default='/velodyne_points')
     debug_mode = LaunchConfiguration('debug_mode', default='true')
     use_multi_scale_ndt = LaunchConfiguration('use_multi_scale_ndt', default='true')
     ndt_num_threads = LaunchConfiguration('ndt_num_threads', default='4')
+    registration_backend = LaunchConfiguration('registration_backend', default='cuda')
+    gpu_device_id = LaunchConfiguration('gpu_device_id', default='0')
  
     # 启动NDT重定位节点
     ndt_relocalization_node = launch_ros.actions.Node(
@@ -31,6 +35,8 @@ def generate_launch_description():
                 'use_multi_scale_ndt': use_multi_scale_ndt,  # 是否使用多分辨率NDT算法
                 'ndt_resolutions': [4.0, 2.0, 1.0],  # 逐步减小的分辨率，从粗到细
                 'ndt_num_threads': ndt_num_threads,  # 并行线程数，OMP加速版NDT使用
+                'registration_backend': registration_backend,
+                'gpu_device_id': gpu_device_id,
                 
                 # 单分辨率NDT参数（多分辨率模式下仍会使用部分参数）
                 'ndt_resolution': 1.0,  # 单分辨率模式下使用的分辨率
@@ -43,6 +49,7 @@ def generate_launch_description():
                 
                 # 话题配置
                 'input_cloud_topic': input_cloud_topic,
+                'input_cloud_frame': 'velodyne',
                 'init_pose_topic': '/initialpose',
                 
                 # 坐标系配置
@@ -88,7 +95,7 @@ def generate_launch_description():
             description='Use simulation clock if true'),
         launch.actions.DeclareLaunchArgument(
             'map_path',
-            default_value='/home/lx/tmp/map_indoor/GlobalMap.pcd',
+            default_value=default_map_path,
             description='Full path to PCD map file'),
         launch.actions.DeclareLaunchArgument(
             'map_topic',
@@ -110,6 +117,14 @@ def generate_launch_description():
             'ndt_num_threads',
             default_value='4',
             description='Number of threads to use for OpenMP accelerated NDT'),
+        launch.actions.DeclareLaunchArgument(
+            'registration_backend',
+            default_value='cuda',
+            description='Registration backend: cuda or omp'),
+        launch.actions.DeclareLaunchArgument(
+            'gpu_device_id',
+            default_value='0',
+            description='CUDA device index'),
         launch.actions.DeclareLaunchArgument(
             'use_rviz',
             default_value='true',

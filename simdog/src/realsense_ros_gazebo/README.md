@@ -1,13 +1,12 @@
-# Intel RealSense Gazebo/ROS2 Humble
-Intel Realsense Tracking and Depth camera simulations and URDF macros.
+# Intel RealSense Gazebo / ROS2 Humble
 
+Intel RealSense 跟踪和深度相机的 Gazebo 仿真及 URDF 宏。
 
-
-## RealSense T265 ##
+## RealSense T265
 
 ![](doc/t265.png)
 
-### Usage ###
+### 用法
 ```xml
 <xacro:include filename="$(find realsense_ros_gazebo)/xacro/tracker.xacro"/>
 
@@ -16,19 +15,17 @@ Intel Realsense Tracking and Depth camera simulations and URDF macros.
 </xacro:realsense_T265>
 ```
 
-### Publishers ###
+### 发布话题
 * /camera/**fisheye1**/*
 * /camera/**fisheye2**/*
-* /camera/**gyro**/sample _( accel and gyro are in the same imu message )_
+* /camera/**gyro**/sample _（加速度计和陀螺仪数据在同一 IMU 消息中）_
 * /camera/**odom**/sample
 
-
-
-## RealSense R200 ##
+## RealSense R200
 
 ![](doc/r200.png)
 
-### Usage ###
+### 用法
 ```xml
 <xacro:include filename="$(find realsense_ros_gazebo)/xacro/depthcam.xacro"/>
 
@@ -37,20 +34,18 @@ Intel Realsense Tracking and Depth camera simulations and URDF macros.
 </xacro:realsense_R200>
 ```
 
-### Publishers ###
+### 发布话题
 
 * /camera/**color**/*
 * /camera/**depth**/*
 * /camera/**infra1**/*
 * /camera/**infra2**/*
 
-
-
 ## RealSense D435
 
 ![](doc/d435.png)
 
-### Usage ###
+### 用法
 
 ```xml
 <xacro:include filename="$(find realsense_ros_gazebo)/xacro/depthcam.xacro"/>
@@ -60,7 +55,7 @@ Intel Realsense Tracking and Depth camera simulations and URDF macros.
 </xacro:realsense_d435>
 ```
 
-### Publishers ###
+### 发布话题
 
 * /camera/**color**/*
 * /camera/**depth**/*

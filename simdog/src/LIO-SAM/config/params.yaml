@@ -4,13 +4,15 @@
     # Topics
     pointCloudTopic: "/velodyne_points"           # 匹配Gazebo中的激光雷达话题
     imuTopic: "/imu/data"                         # 匹配Gazebo中的IMU话题
-    odomTopic: "/odom"                     
+    odomTopic: "/lio_sam/imu/odometry"          # LIO-SAM内部融合里程计，不占用CHAMP的/odom
     gpsTopic: "/gps/fix"                         # 匹配Gazebo中的GPS话题
     # Frames
     lidarFrame: "velodyne"                        # 匹配TF树中的激光雷达坐标系
-    baselinkFrame: "base_footprint"                    # 匹配TF树中的机器人基础坐标系
-    odometryFrame: "odom"                         # 匹配TF树中的里程计坐标系
+    baselinkFrame: "base_footprint"               # 匹配TF树中的机器人基础坐标系
+    odometryFrame: "map"                          # LIO-SAM建图结果位于map坐标系
     mapFrame: "map"                               # 地图坐标系
+    localOdomFrame: "odom"                        # CHAMP/EKF连续局部里程计坐标系
+    publishLioOdomTf: false                       # odom到机器人TF由CHAMP/EKF唯一发布
 
     # GPS Settings
     useImuHeadingInitialization: true            
@@ -19,8 +21,8 @@
     poseCovThreshold: 10.0                    
 
     # Export settings
-    savePCD: true                              
-    savePCDDirectory: "/home/lx/go2/src/LIO-SAM/map"         
+    savePCD: false                              # 仅通过save_Map.sh显式保存，避免节点退出时覆盖地图
+    savePCDDirectory: "go2_maps/latest"
 
     # Sensor Settings - 匹配仿真环境
     sensor: velodyne                              

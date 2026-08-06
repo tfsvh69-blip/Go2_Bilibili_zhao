@@ -2,8 +2,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
@@ -23,21 +25,24 @@ def generate_launch_description():
         description='Use simulation (Gazebo) clock'
     )
 
+    declare_rviz = DeclareLaunchArgument(
+        'rviz',
+        default_value='true',
+        description='Launch RViz2'
+    )
+
+    declare_publish_map_to_odom = DeclareLaunchArgument(
+        'publish_map_to_odom',
+        default_value='true',
+        description='由LIO-SAM发布动态map到odom；启动NDT时应设为false'
+    )
+
     # 4. 节点配置
     nodes = [
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            arguments='0.0 0.0 0.0 0.0 0.0 0.0 map odom'.split(' '),
-            parameters=[LaunchConfiguration('params_file'),
-                {'use_sim_time': LaunchConfiguration('use_sim_time')}],
-            output='screen'
-            ),
         # LIO-SAM 核心节点
         Node(
             package='lio_sam',
             executable='lio_sam_imuPreintegration',
-            name='lio_sam_imuPreintegration',
             parameters=[
                 LaunchConfiguration('params_file'),
                 {'use_sim_time': LaunchConfiguration('use_sim_time')}
@@ -71,7 +76,13 @@ def generate_launch_description():
             name='lio_sam_mapOptimization',
             parameters=[
                 LaunchConfiguration('params_file'),
-                {'use_sim_time': LaunchConfiguration('use_sim_time')}
+                {
+                    'use_sim_time': LaunchConfiguration('use_sim_time'),
+                    'publishMapToOdom': ParameterValue(
+                        LaunchConfiguration('publish_map_to_odom'),
+                        value_type=bool
+                    )
+                }
             ],
             output='screen',
             arguments=['--ros-args', '--log-level', 'info']
@@ -84,12 +95,15 @@ def generate_launch_description():
             name='lio_sam_rviz2',
             arguments=['-d', os.path.join(lio_sam_dir, 'config', 'rviz2.rviz')],
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-            output='screen'
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('rviz'))
         )
     ]
 
     return LaunchDescription([
         declare_use_sim_time,
         declare_params,
+        declare_rviz,
+        declare_publish_map_to_odom,
         *nodes
     ])

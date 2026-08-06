@@ -1,6 +1,6 @@
 # LIO-SAM
 
-**A real-time lidar-inertial odometry package. We strongly recommend the users read this document thoroughly and test the package with the provided dataset first. A video of the demonstration of the method can be found on [YouTube](https://www.youtube.com/watch?v=A0H8CoORZJU).**
+**一个实时激光-惯性里程计包。我们强烈建议用户仔细阅读本文档，并先使用提供的示例数据集测试本包。方法的演示视频可在 [YouTube](https://www.youtube.com/watch?v=A0H8CoORZJU) 上观看。**
 
 <p align='center'>
     <img src="./config/doc/demo.gif" alt="drawing" width="800"/>
@@ -13,80 +13,80 @@
     <img src="./config/doc/device-boat.png" alt="drawing" width="200"/>
 </p>
 
-## Menu
+## 目录
 
-  - [**System architecture**](#system-architecture)
+  - [**系统架构**](#系统架构)
 
-  - [**Notes on ROS2 branch**](#notes-on-ros2-branch)
+  - [**ROS2 分支说明**](#ros2-分支说明)
 
-  - [**Package dependency**](#dependency)
+  - [**包依赖**](#依赖)
 
-  - [**Package install**](#install)
+  - [**包安装**](#安装)
 
-  - [**Prepare lidar data**](#prepare-lidar-data) (must read)
+  - [**准备激光雷达数据**](#准备激光雷达数据)（必读）
 
-  - [**Prepare IMU data**](#prepare-imu-data) (must read)
+  - [**准备 IMU 数据**](#准备-imu-数据)（必读）
 
-  - [**Sample datasets**](#sample-datasets)
+  - [**示例数据集**](#示例数据集)
 
-  - [**Run the package**](#run-the-package)
+  - [**运行本包**](#运行本包)
 
-  - [**Other notes**](#other-notes)
+  - [**其他说明**](#其他说明)
 
-  - [**Issues**](#issues)
+  - [**常见问题**](#常见问题)
 
-  - [**Paper**](#paper)
+  - [**论文**](#论文)
 
-  - [**TODO**](#todo)
+  - [**待办事项**](#待办事项)
 
-  - [**Related Package**](#related-package)
+  - [**相关包**](#相关包)
 
-  - [**Acknowledgement**](#acknowledgement)
+  - [**致谢**](#致谢)
 
-## System architecture
+## 系统架构
 
 <p align='center'>
     <img src="./config/doc/system.png" alt="drawing" width="800"/>
 </p>
 
-We design a system that maintains two graphs and runs up to 10x faster than real-time.
-  - The factor graph in "mapOptimization.cpp" optimizes lidar odometry factor and GPS factor. This factor graph is maintained consistently throughout the whole test.
-  - The factor graph in "imuPreintegration.cpp" optimizes IMU and lidar odometry factor and estimates IMU bias. This factor graph is reset periodically and guarantees real-time odometry estimation at IMU frequency.
+我们设计了一个维护两个因子图的系统，运行速度可达实时性能的 10 倍以上：
+  - `mapOptimization.cpp` 中的因子图用于优化激光里程计因子和 GPS 因子，在整个测试过程中持续维护。
+  - `imuPreintegration.cpp` 中的因子图用于优化 IMU 和激光里程计因子，并估计 IMU 偏置，周期性地重置并保证以 IMU 频率进行实时里程计估计。
 
-## Notes on ROS2 branch
+## ROS2 分支说明
 
-There are some features of the original ROS1 version that are currently missing in this ROS2 version, namely:
-- Testing with Velodyne & Livox lidars and Microstrain IMUs
-- A launch file for the navsat module/GPS factor
-- The rviz2 configuration misses many elements
+原始 ROS1 版本中的以下功能在当前 ROS2 版本中暂未实现：
+- 未测试 Velodyne 和 Livox 激光雷达以及 Microstrain IMU
+- 缺少 navsat 模块 / GPS 因子的启动文件
+- RViz2 配置缺少部分可视化元素
 
-This branch was tested with Ouster lidars, Xsens IMUs and SBG-Systems IMUs using the following ROS2 drivers:
+本分支已在以下设备组合上通过测试：Ouster 激光雷达配合 Xsens IMU 和 SBG-Systems IMU，使用如下 ROS2 驱动：
 - [ros2_ouster_drivers](https://github.com/ros-drivers/ros2_ouster_drivers)
 - [bluespace_ai_xsens_ros_mti_driver](https://github.com/bluespace-ai/bluespace_ai_xsens_ros_mti_driver)
 - [sbg_ros2_driver](https://github.com/SBG-Systems/sbg_ros2_driver)
 
-In these tests, the IMU was mounted on the bottom of the lidar such that their x-axes pointed in the same direction. The parameters `extrinsicRot` and `extrinsicRPY` in `params.yaml` correspond to this constellation.
+测试中，IMU 安装在激光雷达底部，两者的 X 轴指向相同方向。`params.yaml` 中的 `extrinsicRot` 和 `extrinsicRPY` 参数对应此安装方式。
 
-## Dependencies
+## 依赖
 
-Tested with ROS2 versions foxy and galactic on Ubuntu 20.04 and humble on Ubuntu 22.04
+已在 ROS2 Foxy 和 Galactic（Ubuntu 20.04）以及 Humble（Ubuntu 22.04）上测试。
 - [ROS2](https://docs.ros.org/en/humble/Installation.html)
   ```
-  sudo apt install ros-<ros2-version>-perception-pcl \
-		   ros-<ros2-version>-pcl-msgs \
-		   ros-<ros2-version>-vision-opencv \
-		   ros-<ros2-version>-xacro
+  sudo apt install ros-<ros2-版本>-perception-pcl \
+           ros-<ros2-版本>-pcl-msgs \
+           ros-<ros2-版本>-vision-opencv \
+           ros-<ros2-版本>-xacro
   ```
-- [gtsam](https://gtsam.org/get_started) (Georgia Tech Smoothing and Mapping library)
+- [gtsam](https://gtsam.org/get_started)（Georgia Tech 平滑与建图库）
   ```
-  # Add GTSAM-PPA
+  # 添加 GTSAM PPA 源
   sudo add-apt-repository ppa:borglab/gtsam-release-4.1
   sudo apt install libgtsam-dev libgtsam-unstable-dev
   ```
 
-## Install
+## 安装
 
-Use the following commands to download and compile the package.
+使用以下命令下载并编译本包：
 
   ```
   cd ~/ros2_ws/src
@@ -97,15 +97,15 @@ Use the following commands to download and compile the package.
   colcon build
   ```
 
-## Using Docker
+## 使用 Docker
 
-Build image (based on ROS2 Humble):
+构建镜像（基于 ROS2 Humble）：
 
 ```
 docker build -t liosam-humble-jammy .
 ```
 
-Once you have the image, you can start a container by using one of the following methods:
+获取镜像后，可以通过以下方式之一启动容器：
 
 1. `docker run`
 
@@ -123,38 +123,38 @@ docker run --init -it -d \
 
 2. `docker compose`
 
-Start a docker compose container:
+启动 docker compose 容器：
 
 ```
 docker compose up -d
 ```
 
-Stopping a docker compose container:
+停止 docker compose 容器：
 ```
 docker compose down
 ```
 
-To enter into the running container use:
+进入运行中的容器：
 
 ```
 docker exec -it liosam-humble-jammy-container bash
 ```
-## Prepare lidar data
 
-The user needs to prepare the point cloud data in the correct format for cloud deskewing, which is mainly done in "imageProjection.cpp". The two requirements are:
-  - **Provide point time stamp**. LIO-SAM uses IMU data to perform point cloud deskew. Thus, the relative point time in a scan needs to be known. The up-to-date Velodyne ROS driver should output this information directly. Here, we assume the point time channel is called "time." The definition of the point type is located at the top of the "imageProjection.cpp." "deskewPoint()" function utilizes this relative time to obtain the transformation of this point relative to the beginning of the scan. When the lidar rotates at 10Hz, the timestamp of a point should vary between 0 and 0.1 seconds. If you are using other lidar sensors, you may need to change the name of this time channel and make sure that it is the relative time in a scan.
-  - **Provide point ring number**. LIO-SAM uses this information to organize the point correctly in a matrix. The ring number indicates which channel of the sensor that this point belongs to. The definition of the point type is located at the top of "imageProjection.cpp." The up-to-date Velodyne ROS driver should output this information directly. Again, if you are using other lidar sensors, you may need to rename this information. Note that only mechanical lidars are supported by the package currently.
+## 准备激光雷达数据
 
-## Prepare IMU data
+用户需要以正确的格式准备点云数据以进行点云去畸变，该功能主要在 `imageProjection.cpp` 中实现。两个要求如下：
+  - **提供点时间戳**。LIO-SAM 使用 IMU 数据进行点云去畸变，因此需要知道每个点在当前扫描中的相对时间。最新版 Velodyne ROS 驱动应直接输出此信息。这里假设点时间通道名为 "time"，点类型定义位于 `imageProjection.cpp` 顶部。`deskewPoint()` 函数利用相对时间获取该点相对于扫描起始时刻的位姿变换。当激光雷达以 10Hz 旋转时，点的时间戳应在 0 到 0.1 秒之间。如果使用其他激光雷达传感器，可能需要更改时间通道的名称，并确保它是扫描内的相对时间。
+  - **提供点环号**。LIO-SAM 使用此信息将点正确组织到矩阵中。环号表示该点属于传感器的哪个通道。点类型定义位于 `imageProjection.cpp` 顶部。最新版 Velodyne ROS 驱动应直接输出此信息。同样，如果使用其他激光雷达传感器，可能需要重命名此信息。注意：当前仅支持机械式激光雷达。
 
-  - **IMU requirement**. Like the original LOAM implementation, LIO-SAM only works with a 9-axis IMU, which gives roll, pitch, and yaw estimation. The roll and pitch estimation is mainly used to initialize the system at the correct attitude. The yaw estimation initializes the system at the right heading when using GPS data. Theoretically, an initialization procedure like VINS-Mono will enable LIO-SAM to work with a 6-axis IMU. The performance of the system largely depends on the quality of the IMU measurements. The higher the IMU data rate, the better the system accuracy. We use Microstrain 3DM-GX5-25, which outputs data at 500Hz. We recommend using an IMU that gives at least a 200Hz output rate. Note that the internal IMU of Ouster lidar is an 6-axis IMU.
+## 准备 IMU 数据
 
-  - **IMU alignment**. LIO-SAM transforms IMU raw data from the IMU frame to the Lidar frame, which follows the ROS REP-105 convention (x - forward, y - left, z - upward). To make the system function properly, the correct extrinsic transformation needs to be provided in "params.yaml" file. **The reason why there are two extrinsics is that my IMU (Microstrain 3DM-GX5-25) acceleration and attitude have different coordinates. Depending on your IMU manufacturer, the two extrinsics for your IMU may or may not be the same**.
-    - "extrinsicRot" in "params.yaml" is a rotation matrix that transforms IMU gyro and acceleometer measurements to lidar frame.
-    - "extrinsicRPY" in "params.yaml" is a rotation matrix that transforms IMU orientation to lidar frame.
+  - **IMU 要求**。与原始 LOAM 实现相同，LIO-SAM 仅支持 9 轴 IMU，能够提供横滚、俯仰和偏航角估计。横滚和俯仰角估计主要用于以正确姿态初始化系统；偏航角估计在使用 GPS 数据时以正确航向初始化系统。理论上，类似 VINS-Mono 的初始化过程可以使 LIO-SAM 支持 6 轴 IMU。系统的性能在很大程度上取决于 IMU 测量数据的质量。IMU 数据速率越高，系统精度越好。我们使用 Microstrain 3DM-GX5-25，输出频率为 500Hz。建议使用输出速率至少 200Hz 的 IMU。注意：Ouster 激光雷达的内置 IMU 为 6 轴 IMU。
 
-  - **IMU debug**. It's strongly recommended that the user uncomment the debug lines in "imuHandler()" of "imageProjection.cpp" and test the output of the transformed IMU data. The user can rotate the sensor suite to check whether the readings correspond to the sensor's movement. A YouTube video that shows the corrected IMU data can be found [here (link to YouTube)](https://youtu.be/BOUK8LYQhHs).
+  - **IMU 对齐**。LIO-SAM 将 IMU 原始数据从 IMU 坐标系变换到激光雷达坐标系，遵循 ROS REP-105 约定（x — 前，y — 左，z — 上）。为使系统正常工作，需要在 `params.yaml` 文件中提供正确的外参变换。**之所以存在两组外参，是因为我的 IMU（Microstrain 3DM-GX5-25）的加速度和姿态使用不同的坐标系。根据 IMU 厂商的不同，两组外参可能相同也可能不同**：
+    - `params.yaml` 中的 `extrinsicRot` 是将 IMU 陀螺仪和加速度计测量值变换到激光雷达坐标系的旋转矩阵。
+    - `params.yaml` 中的 `extrinsicRPY` 是将 IMU 方向变换到激光雷达坐标系的旋转矩阵。
 
+  - **IMU 调试**。强烈建议用户取消 `imageProjection.cpp` 中 `imuHandler()` 函数内的调试代码注释，并检查 IMU 变换后的输出数据。用户可以旋转传感器组件来验证读数是否与实际运动一致。展示校正后 IMU 数据的 YouTube 视频可在 [此处（YouTube 链接）](https://youtu.be/BOUK8LYQhHs) 查看。
 
 <p align='center'>
     <img src="./config/doc/imu-transform.png" alt="drawing" width="800"/>
@@ -163,87 +163,88 @@ The user needs to prepare the point cloud data in the correct format for cloud d
     <img src="./config/doc/imu-debug.gif" alt="drawing" width="800"/>
 </p>
 
-## Sample datasets
+## 示例数据集
 
-For privacy reasons, no data set can currently be made available for ROS2.
+出于隐私原因，当前无法提供 ROS2 版本的示例数据集。
 
-README.md of the master branch contains some links to ROS1 rosbags. It is possible to use [ros1_bridge](https://github.com/ros2/ros1_bridge) with these rosbags, but verify timing behavior (message frequency in ROS2) first. Mind [DDS tuning](https://docs.ros.org/en/humble/How-To-Guides/DDS-tuning.html).
+主分支的 README.md 包含一些 ROS1 rosbag 的链接。可以通过 [ros1_bridge](https://github.com/ros2/ros1_bridge) 使用这些 rosbag，但需先验证时序行为（ROS2 中的消息频率）。注意 [DDS 调优](https://docs.ros.org/en/humble/How-To-Guides/DDS-tuning.html)。
 
-## Run the package
+## 运行本包
 
-1. Run the launch file:
+1. 运行启动文件：
 ```
 ros2 launch lio_sam run.launch.py
 ```
 
-2. Play existing bag files:
+2. 播放已有的 bag 文件：
 ```
-ros2 bag play your-bag.bag
+ros2 bag play 你的-bag.bag
 ```
 
-## Save map
+## 保存地图
 ```
 ros2 service call /lio_sam/save_map lio_sam/srv/SaveMap
 ```
 ```
 ros2 service call /lio_sam/save_map lio_sam/srv/SaveMap "{resolution: 0.2, destination: /Downloads/service_LOAM}"
 ```
-## Other notes
 
-  - **Loop closure:** The loop function here gives an example of proof of concept. It is directly adapted from LeGO-LOAM loop closure. For more advanced loop closure implementation, please refer to [ScanContext](https://github.com/irapkaist/SC-LeGO-LOAM). Set the "loopClosureEnableFlag" in "params.yaml" to "true" to test the loop closure function. In Rviz, uncheck "Map (cloud)" and check "Map (global)". This is because the visualized map - "Map (cloud)" - is simply a stack of point clouds in Rviz. Their postion will not be updated after pose correction. The loop closure function here is simply adapted from LeGO-LOAM, which is an ICP-based method. Because ICP runs pretty slow, it is suggested that the playback speed is set to be "-r 1". You can try the Garden dataset for testing.
+## 其他说明
+
+  - **回环检测：** 此处的回环功能为概念验证示例，直接改编自 LeGO-LOAM 的回环检测。如需更高级的回环检测实现，请参考 [ScanContext](https://github.com/irapkaist/SC-LeGO-LOAM)。将 `params.yaml` 中的 `loopClosureEnableFlag` 设为 `true` 以测试回环检测功能。在 RViz 中，取消勾选 "Map (cloud)" 并勾选 "Map (global)"，因为可视化的 "Map (cloud)" 地图只是 RViz 中简单堆叠的点云，其位置在姿态校正后不会更新。这里的回环功能直接改编自 LeGO-LOAM，是基于 ICP 的方法。由于 ICP 运行较慢，建议将播放速度设为 `-r 1`。可以尝试使用 Garden 数据集进行测试。
 
 <p align='center'>
     <img src="./config/doc/loop-closure.gif" alt="drawing" width="350"/>
     <img src="./config/doc/loop-closure-2.gif" alt="drawing" width="350"/>
 </p>
 
-  - **Using GPS:** The park dataset is provided for testing LIO-SAM with GPS data. This dataset is gathered by [Yewei Huang](https://robustfieldautonomylab.github.io/people.html). To enable the GPS function, change "gpsTopic" in "params.yaml" to "odometry/gps". In Rviz, uncheck "Map (cloud)" and check "Map (global)". Also check "Odom GPS", which visualizes the GPS odometry. "gpsCovThreshold" can be adjusted to filter bad GPS readings. "poseCovThreshold" can be used to adjust the frequency of adding GPS factor to the graph. For example, you will notice the trajectory is constantly corrected by GPS whey you set "poseCovThreshold" to 1.0. Because of the heavy iSAM optimization, it's recommended that the playback speed is "-r 1".
+  - **使用 GPS：** 提供 park 数据集用于测试 LIO-SAM 的 GPS 功能，该数据集由 [黄业伟](https://robustfieldautonomylab.github.io/people.html) 采集。要启用 GPS 功能，将 `params.yaml` 中的 `gpsTopic` 改为 `odometry/gps`。在 RViz 中，取消勾选 "Map (cloud)" 并勾选 "Map (global)"，同时勾选 "Odom GPS" 以可视化 GPS 里程计。`gpsCovThreshold` 可用于过滤质量较差的 GPS 读数。`poseCovThreshold` 用于调整向因子图添加 GPS 因子的频率。例如，当 `poseCovThreshold` 设为 1.0 时，你会注意到轨迹被 GPS 持续修正。由于 iSAM 优化计算量较大，建议播放速度为 `-r 1`。
 
 <p align='center'>
     <img src="./config/doc/gps-demo.gif" alt="drawing" width="400"/>
 </p>
 
-  - **KITTI:** Since LIO-SAM needs a high-frequency IMU for function properly, we need to use KITTI raw data for testing. One problem remains unsolved is that the intrinsics of the IMU are unknown, which has a big impact on the accuracy of LIO-SAM. Download the provided sample data and make the following changes in "params.yaml":
+  - **KITTI：** 由于 LIO-SAM 需要高频 IMU 才能正常工作，我们需要使用 KITTI 原始数据进行测试。一个尚未解决的问题是 IMU 的内参未知，这对 LIO-SAM 的精度有较大影响。下载提供的示例数据并在 `params.yaml` 中做以下修改：
     - extrinsicTrans: [-8.086759e-01, 3.195559e-01, -7.997231e-01]
     - extrinsicRot: [9.999976e-01, 7.553071e-04, -2.035826e-03, -7.854027e-04, 9.998898e-01, -1.482298e-02, 2.024406e-03, 1.482454e-02, 9.998881e-01]
     - extrinsicRPY: [9.999976e-01, 7.553071e-04, -2.035826e-03, -7.854027e-04, 9.998898e-01, -1.482298e-02, 2.024406e-03, 1.482454e-02, 9.998881e-01]
     - N_SCAN: 64
-    - downsampleRate: 2 or 4
-    - loopClosureEnableFlag: true or false
+    - downsampleRate: 2 或 4
+    - loopClosureEnableFlag: true 或 false
 
 <p align='center'>
     <img src="./config/doc/kitti-map.png" alt="drawing" width="300"/>
     <img src="./config/doc/kitti-demo.gif" alt="drawing" width="300"/>
 </p>
 
-  - **Ouster lidar:** To make LIO-SAM work with Ouster lidar, some preparations needs to be done on hardware and software level.
-    - Hardware:
-      - Use an external IMU. LIO-SAM does not work with the internal 6-axis IMU of Ouster lidar. You need to attach a 9-axis IMU to the lidar and perform data-gathering.
-      - Configure the driver. Change "timestamp_mode" in your Ouster launch file to "TIME_FROM_PTP_1588" so you can have ROS format timestamp for the point clouds.
-    - Config:
-      - Change "sensor" in "params.yaml" to "ouster".
-      - Change "N_SCAN" and "Horizon_SCAN" in "params.yaml" according to your lidar, i.e., N_SCAN=128, Horizon_SCAN=1024.
-    - Gen 1 and Gen 2 Ouster:
-      It seems that the point coordinate definition might be different in different generations. Please refer to [Issue #94](https://github.com/TixiaoShan/LIO-SAM/issues/94) for debugging.
+  - **Ouster 激光雷达：** 要使 LIO-SAM 与 Ouster 激光雷达兼容，需要在硬件和软件层面做一些准备：
+    - 硬件：
+      - 使用外部 IMU。LIO-SAM 不支持 Ouster 激光雷达内置的 6 轴 IMU，需要外接一个 9 轴 IMU 进行数据采集。
+      - 配置驱动。将 Ouster 启动文件中的 `timestamp_mode` 改为 `TIME_FROM_PTP_1588`，以便点云获得 ROS 格式的时间戳。
+    - 配置：
+      - 将 `params.yaml` 中的 `sensor` 改为 `ouster`。
+      - 根据激光雷达型号修改 `params.yaml` 中的 `N_SCAN` 和 `Horizon_SCAN`，例如 N_SCAN=128、Horizon_SCAN=1024。
+    - 第一代与第二代 Ouster：
+      不同代产品的点坐标定义可能不同，请参考 [Issue #94](https://github.com/TixiaoShan/LIO-SAM/issues/94) 进行调试。
 
 <p align='center'>
     <img src="./config/doc/ouster-device.jpg" alt="drawing" width="300"/>
     <img src="./config/doc/ouster-demo.gif" alt="drawing" width="300"/>
 </p>
 
-## Issues
+## 常见问题
 
-  - **Zigzag or jerking behavior**: if your lidar and IMU data formats are consistent with the requirement of LIO-SAM, this problem is likely caused by un-synced timestamp of lidar and IMU data.
+  - **锯齿状或抖动行为：** 如果激光雷达和 IMU 数据格式符合 LIO-SAM 的要求，该问题很可能由激光雷达和 IMU 数据时间戳不同步引起。
 
-  - **Jumpping up and down**: if you start testing your bag file and the base_link starts to jump up and down immediately, it is likely your IMU extrinsics are wrong. For example, the gravity acceleration has negative value.
+  - **上下跳动：** 如果开始播放 bag 文件后 base_link 立即开始上下跳动，很可能是 IMU 外参不正确导致的，例如重力加速度出现负值。
 
-  - **mapOptimization crash**: it is usually caused by GTSAM. Please install the GTSAM specified in the README.md. More similar issues can be found [here](https://github.com/TixiaoShan/LIO-SAM/issues).
+  - **mapOptimization 崩溃：** 通常由 GTSAM 引起。请按照本 README.md 中的说明安装指定版本的 GTSAM。更多类似问题可参见 [此处](https://github.com/TixiaoShan/LIO-SAM/issues)。
 
-  - **gps odometry unavailable**: it is generally caused due to unavailable transform between message frame_ids and robot frame_id (for example: transform should be available from "imu_frame_id" and "gps_frame_id" to "base_link" frame. Please read the Robot Localization documentation found [here](http://docs.ros.org/en/melodic/api/robot_localization/html/preparing_sensor_data.html).
+  - **GPS 里程计不可用：** 一般是由于消息 frame_id 与机器人 frame_id 之间的坐标变换不可用（例如，需要提供从 `imu_frame_id` 和 `gps_frame_id` 到 `base_link` 的坐标变换）。请参阅 [Robot Localization 文档](http://docs.ros.org/en/melodic/api/robot_localization/html/preparing_sensor_data.html)。
 
-## Paper
+## 论文
 
-Thank you for citing [LIO-SAM (IROS-2020)](./config/doc/paper.pdf) if you use any of this code.
+如果你使用了本项目的任何代码，请引用 [LIO-SAM (IROS-2020)](./config/doc/paper.pdf)：
 ```
 @inproceedings{liosam2020shan,
   title={LIO-SAM: Tightly-coupled Lidar Inertial Odometry via Smoothing and Mapping},
@@ -255,7 +256,7 @@ Thank you for citing [LIO-SAM (IROS-2020)](./config/doc/paper.pdf) if you use an
 }
 ```
 
-Part of the code is adapted from [LeGO-LOAM](https://github.com/RobustFieldAutonomyLab/LeGO-LOAM).
+部分代码改编自 [LeGO-LOAM](https://github.com/RobustFieldAutonomyLab/LeGO-LOAM)：
 ```
 @inproceedings{legoloam2018shan,
   title={LeGO-LOAM: Lightweight and Ground-Optimized Lidar Odometry and Mapping on Variable Terrain},
@@ -267,15 +268,15 @@ Part of the code is adapted from [LeGO-LOAM](https://github.com/RobustFieldAuton
 }
 ```
 
-## TODO
+## 待办事项
 
-  - [ ] [Bug within imuPreintegration](https://github.com/TixiaoShan/LIO-SAM/issues/104)
+  - [ ] [imuPreintegration 中的 Bug](https://github.com/TixiaoShan/LIO-SAM/issues/104)
 
-## Related Package
+## 相关包
 
-  - [Lidar-IMU calibration](https://github.com/chennuo0125-HIT/lidar_imu_calib)
-  - [LIO-SAM with Scan Context](https://github.com/gisbi-kim/SC-LIO-SAM)
+  - [激光雷达-IMU 标定](https://github.com/chennuo0125-HIT/lidar_imu_calib)
+  - [集成 Scan Context 的 LIO-SAM](https://github.com/gisbi-kim/SC-LIO-SAM)
 
-## Acknowledgement
+## 致谢
 
-  - LIO-SAM is based on LOAM (J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time).
+  - LIO-SAM 基于 LOAM（J. Zhang and S. Singh. LOAM: Lidar Odometry and Mapping in Real-time）。

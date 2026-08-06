@@ -1,20 +1,67 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# 等待时间（秒）
-WAIT_TIME=8
+set -euo pipefail
 
-# 启动Gazebo仿真环境 3d_to_2d slamtoolbox
-# 【防崩】本机 RTX 5070 与 Gazebo Classic 的 gzclient 不兼容(SIGKILL),故 gui:=false 不开 Gazebo 窗口,
-#   改用 rviz:=true 在 RViz 里可视化;velodyne 由 gzserver 在 NVIDIA 上渲染(有显示即可)。
-gnome-terminal -- bash -c "source install/setup.bash && ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true; exec bash"
-# 【备选】若上面 /velodyne_points 无数据,改用这行:软件渲染并保留 Gazebo 窗口(慢但稳):
-# gnome-terminal -- bash -c "source install/setup.bash && LIBGL_ALWAYS_SOFTWARE=1 ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true; exec bash"
-# gnome-terminal -- bash -c "source install/setup.bash && ros2 launch pointcloud_to_laserscan pointcloud_to_laserscan_launch.py; exec bash"
-# gnome-terminal -- bash -c "source install/setup.bash && ros2 launch go2_config slam.launch.py; exec bash"   #启动slam_toolbox建图模式，如果需要定位，可以在配置文件里改，然后将导航的amcl注释掉
-# gnome-terminal -- bash -c "source install/setup.bash && ros2 launch go2_config navigate.launch.py; exec bash"  #启动导航 暂时未配好 等待github 更新
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ros_setup="/opt/ros/humble/setup.bash"
+workspace_setup="${script_dir}/install/setup.bash"
+wait_time="${WAIT_TIME:-8}"
+map_path="${1:-${HOME}/go2_maps/latest/GlobalMap.pcd}"
+gpu_device="${GO2_GPU_DEVICE:-0}"
+force_nvidia_rendering="${GO2_FORCE_NVIDIA_RENDERING:-1}"
 
-sleep $WAIT_TIME
+if [[ ! -f ${workspace_setup} ]]; then
+    echo "simdog 尚未构建，请先执行：bash \"${script_dir}/../scripts/build_workspaces.sh\"" >&2
+    exit 1
+fi
 
-gnome-terminal -- bash -c "source install/setup.bash && ros2 launch lio_sam lidar.launch.py; exec bash"
-gnome-terminal -- bash -c "source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard; exec bash"
-gnome-terminal -- bash -c "source install/setup.bash && ros2 launch ndt_relocalization ndt_localization.launch.py; exec bash"
+if ! command -v gnome-terminal >/dev/null 2>&1; then
+    echo "未找到 gnome-terminal，请按 README.md 中的命令分终端启动。" >&2
+    exit 1
+fi
+
+printf -v ros_setup_q '%q' "${ros_setup}"
+printf -v workspace_setup_q '%q' "${workspace_setup}"
+printf -v map_path_q '%q' "${map_path}"
+common_setup="source ${ros_setup_q} && source ${workspace_setup_q}"
+if command -v nvidia-smi >/dev/null 2>&1 &&
+    [[ -x /usr/local/cuda-12.8/bin/nvcc ]]; then
+    printf -v gpu_device_q '%q' "${gpu_device}"
+    common_setup+=" && export PATH=/usr/local/cuda-12.8/bin:\${PATH}"
+    common_setup+=" && export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:\${LD_LIBRARY_PATH:-}"
+    common_setup+=" && export CUDA_VISIBLE_DEVICES=${gpu_device_q}"
+    if [[ ${force_nvidia_rendering} == "1" ]]; then
+        common_setup+=" && export __NV_PRIME_RENDER_OFFLOAD=1"
+        common_setup+=" && export __GLX_VENDOR_LIBRARY_NAME=nvidia"
+        common_setup+=" && unset LIBGL_ALWAYS_SOFTWARE"
+    fi
+    echo "GPU 默认启用：CUDA 设备 ${gpu_device}，NVIDIA 渲染=${force_nvidia_rendering}"
+fi
+
+open_terminal() {
+    local title="$1"
+    local command="$2"
+    gnome-terminal --title="${title}" -- \
+        bash -lc "${common_setup} && ${command}; exec bash"
+}
+
+open_terminal "Go2 Gazebo" \
+    "ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true"
+
+sleep "${wait_time}"
+
+if [[ -f ${map_path} ]]; then
+    open_terminal "Go2 LIO-SAM" \
+        "ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false"
+    open_terminal "Go2 NDT 重定位" \
+        "ros2 launch ndt_relocalization ndt_localization.launch.py map_path:=${map_path_q} registration_backend:=cuda gpu_device_id:=0"
+    echo "已使用地图启动 NDT：${map_path}"
+else
+    open_terminal "Go2 LIO-SAM" \
+        "ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=true"
+    echo "未找到 NDT 地图，已跳过重定位：${map_path}"
+    echo "建图完成后执行 bash \"${script_dir}/save_Map.sh\"，再重新运行本脚本。"
+fi
+
+open_terminal "Go2 键盘遥控" \
+    "ros2 run teleop_twist_keyboard teleop_twist_keyboard"

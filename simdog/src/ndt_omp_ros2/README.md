@@ -1,58 +1,59 @@
 # ndt_omp_ros2
-This package provides an OpenMP-boosted Normal Distributions Transform (and GICP) algorithm derived from pcl. The NDT algorithm is modified to be SSE-friendly and multi-threaded. It can run up to 10 times faster than its original version in pcl.
 
-### Benchmark
+本包提供基于 PCL 衍生、经 OpenMP 加速的 Normal Distributions Transform（NDT）及 GICP 算法。NDT 算法经过 SSE 友好改造并实现多线程化，运行速度可达 PCL 原版的最多 10 倍。
+
+### 性能基准测试
 ```
 $ cd ~/ros2_ws/src/ndt_omp_ros2/data
 $ ros2 run ndt_omp_ros2 align 251370668.pcd 251371071.pcd
 
 --- pcl::GICP ---
-single : 267.385[msec]
-10times: 1151.76[msec]
-fitness: 0.220382
+单次 : 267.385[毫秒]
+10次 : 1151.76[毫秒]
+匹配分数: 0.220382
 
 --- pclomp::GICP ---
-single : 173.152[msec]
-10times: 1299.14[msec]
-fitness: 0.220388
+单次 : 173.152[毫秒]
+10次 : 1299.14[毫秒]
+匹配分数: 0.220388
 
 --- pcl::NDT ---
-single : 425.142[msec]
-10times: 3638.77[msec]
-fitness: 0.213937
+单次 : 425.142[毫秒]
+10次 : 3638.77[毫秒]
+匹配分数: 0.213937
 
---- pclomp::NDT (KDTREE, 1 threads) ---
-single : 308.935[msec]
-10times: 3095.53[msec]
-fitness: 0.213937
+--- pclomp::NDT (KDTREE, 1 线程) ---
+单次 : 308.935[毫秒]
+10次 : 3095.53[毫秒]
+匹配分数: 0.213937
 
---- pclomp::NDT (DIRECT7, 1 threads) ---
-single : 188.942[msec]
-10times: 1373.47[msec]
-fitness: 0.214205
+--- pclomp::NDT (DIRECT7, 1 线程) ---
+单次 : 188.942[毫秒]
+10次 : 1373.47[毫秒]
+匹配分数: 0.214205
 
---- pclomp::NDT (DIRECT1, 1 threads) ---
-single : 41.3584[msec]
-10times: 347.261[msec]
-fitness: 0.208511
+--- pclomp::NDT (DIRECT1, 1 线程) ---
+单次 : 41.3584[毫秒]
+10次 : 347.261[毫秒]
+匹配分数: 0.208511
 
---- pclomp::NDT (KDTREE, 8 threads) ---
-single : 108.68[msec]
-10times: 1046.16[msec]
-fitness: 0.213937
+--- pclomp::NDT (KDTREE, 8 线程) ---
+单次 : 108.68[毫秒]
+10次 : 1046.16[毫秒]
+匹配分数: 0.213937
 
---- pclomp::NDT (DIRECT7, 8 threads) ---
-single : 56.9189[msec]
-10times: 545.279[msec]
-fitness: 0.214205
+--- pclomp::NDT (DIRECT7, 8 线程) ---
+单次 : 56.9189[毫秒]
+10次 : 545.279[毫秒]
+匹配分数: 0.214205
 
---- pclomp::NDT (DIRECT1, 8 threads) ---
-single : 16.7266[msec]
-10times: 169.097[msec]
-fitness: 0.208511
+--- pclomp::NDT (DIRECT1, 8 线程) ---
+单次 : 16.7266[毫秒]
+10次 : 169.097[毫秒]
+匹配分数: 0.208511
 ```
 
-Several methods for neighbor voxel search are implemented. If you select pclomp::KDTREE, results will be completely same as the original pcl::NDT. We recommend to use pclomp::DIRECT7 which is faster and stable. If you need extremely fast registration, choose pclomp::DIRECT1, but it might be a bit unstable.
+实现了多种邻域体素搜索方法。若选择 `pclomp::KDTREE`，结果将与原始 `pcl::NDT` 完全一致。推荐使用 `pclomp::DIRECT7`，速度更快且稳定。若需要极快的配准速度，可选择 `pclomp::DIRECT1`，但可能略有波动。
 
 <img src="data/screenshot.png" height="400pix" /><br>
-Red: target, Green: source, Blue: aligned
+红色：目标点云，绿色：源点云，蓝色：配准后点云

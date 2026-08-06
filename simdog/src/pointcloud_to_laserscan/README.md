@@ -1,49 +1,48 @@
-# ROS 2 pointcloud <-> laserscan converters
+# ROS 2 点云 ↔ 激光扫描转换器
 
-This is a ROS 2 package that provides components to convert `sensor_msgs/msg/PointCloud2` messages to `sensor_msgs/msg/LaserScan` messages and back.
-It is essentially a port of the original ROS 1 package.
+本 ROS 2 包提供将 `sensor_msgs/msg/PointCloud2` 消息转换为 `sensor_msgs/msg/LaserScan` 消息以及反向转换的组件。本质上是原始 ROS 1 包的移植版本。
 
-## pointcloud\_to\_laserscan::PointCloudToLaserScanNode
+## pointcloud_to_laserscan::PointCloudToLaserScanNode
 
-This ROS 2 component projects `sensor_msgs/msg/PointCloud2` messages into `sensor_msgs/msg/LaserScan` messages.
+此 ROS 2 组件将 `sensor_msgs/msg/PointCloud2` 消息投影为 `sensor_msgs/msg/LaserScan` 消息。
 
-### Published Topics
+### 发布话题
 
-* `scan` (`sensor_msgs/msg/LaserScan`) - The output laser scan.
+* `scan` (`sensor_msgs/msg/LaserScan`) — 输出激光扫描。
 
-### Subscribed Topics
+### 订阅话题
 
-* `cloud_in` (`sensor_msgs/msg/PointCloud2`) - The input point cloud. No input will be processed if there isn't at least one subscriber to the `scan` topic.
+* `cloud_in` (`sensor_msgs/msg/PointCloud2`) — 输入点云。若 `scan` 话题没有至少一个订阅者，则不处理任何输入。
 
-### Parameters
+### 参数
 
-* `min_height` (double, default: 2.2e-308) - The minimum height to sample in the point cloud in meters.
-* `max_height` (double, default: 1.8e+308) - The maximum height to sample in the point cloud in meters.
-* `angle_min` (double, default: -π) - The minimum scan angle in radians.
-* `angle_max` (double, default: π) - The maximum scan angle in radians.
-* `angle_increment` (double, default: π/180) - Resolution of laser scan in radians per ray.
-* `queue_size` (double, default: detected number of cores) - Input point cloud queue size.
-* `scan_time` (double, default: 1.0/30.0) - The scan rate in seconds. Only used to populate the scan_time field of the output laser scan message.
-* `range_min` (double, default: 0.0) - The minimum ranges to return in meters.
-* `range_max` (double, default: 1.8e+308) - The maximum ranges to return in meters.
-* `target_frame` (str, default: none) - If provided, transform the pointcloud into this frame before converting to a laser scan. Otherwise, laser scan will be generated in the same frame as the input point cloud.
-* `transform_tolerance` (double, default: 0.01) - Time tolerance for transform lookups. Only used if a `target_frame` is provided.
-* `use_inf` (boolean, default: true) - If disabled, report infinite range (no obstacle) as range_max + 1. Otherwise report infinite range as +inf.
+* `min_height`（double，默认：2.2e-308）— 点云中采样的最小高度，单位米。
+* `max_height`（double，默认：1.8e+308）— 点云中采样的最大高度，单位米。
+* `angle_min`（double，默认：-π）— 最小扫描角度，单位弧度。
+* `angle_max`（double，默认：π）— 最大扫描角度，单位弧度。
+* `angle_increment`（double，默认：π/180）— 激光扫描分辨率，单位弧度/每射线。
+* `queue_size`（double，默认：检测到的 CPU 核心数）— 输入点云队列大小。
+* `scan_time`（double，默认：1.0/30.0）— 扫描周期，单位秒。仅用于填充输出 LaserScan 消息的 scan_time 字段。
+* `range_min`（double，默认：0.0）— 返回的最小距离，单位米。
+* `range_max`（double，默认：1.8e+308）— 返回的最大距离，单位米。
+* `target_frame`（str，默认：无）— 若提供，在转换为激光扫描前先将点云变换到此坐标系。否则，激光扫描将生成在输入点云的同一坐标系中。
+* `transform_tolerance`（double，默认：0.01）— 坐标变换查找的时间容差，单位秒。仅在提供 `target_frame` 时使用。
+* `use_inf`（boolean，默认：true）— 若禁用，将无限距离（无障碍物）报告为 range_max + 1；否则报告为 +inf。
 
-## pointcloud\_to\_laserscan::LaserScanToPointCloudNode
+## pointcloud_to_laserscan::LaserScanToPointCloudNode
 
-This ROS 2 component re-publishes `sensor_msgs/msg/LaserScan` messages as `sensor_msgs/msg/PointCloud2` messages.
+此 ROS 2 组件将 `sensor_msgs/msg/LaserScan` 消息重新发布为 `sensor_msgs/msg/PointCloud2` 消息。
 
-### Published Topics
+### 发布话题
 
-* `cloud` (`sensor_msgs/msg/PointCloud2`) - The output point cloud.
+* `cloud` (`sensor_msgs/msg/PointCloud2`) — 输出点云。
 
-### Subscribed Topics
+### 订阅话题
 
-* `scan_in` (`sensor_msgs/msg/LaserScan`) - The input laser scan. No input will be processed if there isn't at least one subscriber to the `cloud` topic.
+* `scan_in` (`sensor_msgs/msg/LaserScan`) — 输入激光扫描。若 `cloud` 话题没有至少一个订阅者，则不处理任何输入。
 
-### Parameters
+### 参数
 
-* `queue_size` (double, default: detected number of cores) - Input laser scan queue size.
-* `target_frame` (str, default: none) - If provided, transform the pointcloud into this frame before converting to a laser scan. Otherwise, laser scan will be generated in the same frame as the input point cloud.
-* `transform_tolerance` (double, default: 0.01) - Time tolerance for transform lookups. Only used if a `target_frame` is provided.
+* `queue_size`（double，默认：检测到的 CPU 核心数）— 输入激光扫描队列大小。
+* `target_frame`（str，默认：无）— 若提供，在转换为激光扫描前先将点云变换到此坐标系。否则，激光扫描将生成在输入点云的同一坐标系中。
+* `transform_tolerance`（double，默认：0.01）— 坐标变换查找的时间容差，单位秒。仅在提供 `target_frame` 时使用。

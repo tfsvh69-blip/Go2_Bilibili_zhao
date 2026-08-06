@@ -1,27 +1,28 @@
 # champ_teleop
-Champ Quadruped Robot's teleoperation node. This is a forked version of [teleop_twist_keyboard](https://github.com/ros-teleop/teleop_twist_keyboard/blob/master/teleop_twist_keyboard.py). 
 
-The software has been modified to control the robot's whole-body pose (roll, pitch, yaw).
+CHAMP 四足机器人遥控节点。本包是 [teleop_twist_keyboard](https://github.com/ros-teleop/teleop_twist_keyboard/blob/master/teleop_twist_keyboard.py) 的修改版本。
 
-## How to use
+软件已修改为支持控制机器人的全身姿态（横滚、俯仰、偏航）。
+
+## 使用方法
 
     roslaunch champ_teleop teleop.launch
 
-optional paramters for Logitech f710:
+搭配 Logitech F710 手柄的可选参数：
 
     roslaunch champ_teleop teleop.launch joy:=true
 
-* Make sure the joystick's switch on top is in 'x' mode.
+* 请确保手柄顶部的开关处于 'X' 模式。
 
-## Controlling the robot with Joystick
+## 手柄控制机器人
 
-Left Joystick:
-- Up/Down - Linear Velocity X
-- Left/Right - Angular Velocity Z
-- L1 + Left/Right - Linear Velocity Y
+左摇杆：
+- 上/下 — 线速度 X
+- 左/右 — 角速度 Z
+- L1 + 左/右 — 线速度 Y
 
-Right Joystick:
-- Up/Down - Body's Pitch
-- Left/Right - Body's Roll
-- R1 + Left/Right - Body's Yaw
-- R2 + Up/Down - Body's Z (Height) 
+右摇杆：
+- 上/下 — 机身俯仰角（Pitch）
+- 左/右 — 机身横滚角（Roll）
+- R1 + 左/右 — 机身偏航角（Yaw）
+- R2 + 上/下 — 机身高度（Z）

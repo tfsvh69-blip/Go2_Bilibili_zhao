@@ -9,7 +9,7 @@ from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
                             IncludeLaunchDescription)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration, PythonExpression
+from launch.substitutions import Command, LaunchConfiguration
 
 
 def generate_launch_description():
@@ -83,7 +83,7 @@ def generate_launch_description():
 
 
     start_gazebo_client_cmd = ExecuteProcess(
-        condition=IfCondition(PythonExpression([" not ", headless])),
+        condition=IfCondition(gui),
         cmd=["gzclient"],
         cwd=[launch_dir],
         output="screen",

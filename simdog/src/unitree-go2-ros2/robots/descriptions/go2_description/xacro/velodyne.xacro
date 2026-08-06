@@ -50,7 +50,7 @@
     <!-- Gazebo requires the velodyne_gazebo_plugins package -->
     <gazebo reference="velodyne">
         <sensor name="velodyne-VLP16" type="gpu_ray">
-            <!-- gpu_ray:16×1800=28800条/帧的光线投射交给 GPU(RTX5070),而非拖垮 gzserver 单线程CPU。
+            <!-- gpu_ray:16×1800=28800条/帧的光线投射交给本机RTX 4060 Laptop GPU，而非拖垮gzserver单线程CPU。
                  若换 gpu_ray 后 /velodyne_points 无数据,把这里改回 "ray" 并将下方 samples 降到 512。 -->
             <pose>0 0 0 0 0 0</pose>
             <visualize>false</visualize>
