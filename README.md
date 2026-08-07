@@ -35,6 +35,7 @@ GPU NDT 架构：sm_89
 .
 ├── simdog/                         # 唯一 ROS 2 colcon 工作空间
 │   ├── src/
+│   │   ├── go2_behaviors/          # 打招呼、点头、伸展等仿真动作
 │   │   ├── unitree-go2-ros2/       # Go2、CHAMP、ros2_control、Gazebo
 │   │   ├── LIO-SAM/                # 激光惯性建图
 │   │   ├── ndt_relocalization/     # NDT 重定位节点
@@ -100,7 +101,7 @@ Render Offload。可通过 `GO2_GPU_DEVICE` 选择物理 GPU，通过
 ```bash
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
-ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
+ros2 launch go2_config gazebo_velodyne.launch.py gui:=true rviz:=true
 ```
 
 终端二：启动 LIO-SAM 建图和建图 RViz2。
@@ -215,6 +216,36 @@ ros2 topic echo --once /ndt_pose
 Gazebo 单独运行时还没有 `map` 坐标系；若基础 RViz2 出现 “Fixed Frame [map]
 does not exist”，将其 Fixed Frame 临时改为 `odom`，或启动 LIO-SAM/NDT 后再改回
 `map`。
+
+## 仿真动作
+
+只需启动终端一的完整四足 Gazebo，不依赖 LIO-SAM、NDT 或真机。另开一个已加载
+工作空间的终端，每次执行一个动作：
+
+```bash
+ros2 run go2_behaviors go2_behavior hello    # 打招呼
+ros2 run go2_behaviors go2_behavior nod      # 点头
+ros2 run go2_behaviors go2_behavior stretch  # 伸展
+ros2 run go2_behaviors go2_behavior lie      # 趴下并保持
+ros2 run go2_behaviors go2_behavior wave     # 挥爪
+ros2 run go2_behaviors go2_behavior dance    # 简单舞蹈
+```
+
+`lie` 会保持趴下并暂停 CHAMP，恢复时必须执行：
+
+```bash
+ros2 run go2_behaviors go2_behavior stand
+```
+
+动作开始前会通过
+`/quadruped_controller_node/set_behavior_mode` 暂停 CHAMP 的关节指令，再复用
+`joint_trajectory_controller` 标准
+`/joint_group_effort_controller/follow_joint_trajectory` 动作接口；动作和步态
+不会同时抢控制器。执行动作时不要同时遥控。上述轨迹只适配当前 Gazebo 模型，
+不等同于真机固件中的 Unitree Sport API 动作，不能直接用于真机。
+
+实现与开源复用说明见
+[`go2_behaviors/README.md`](simdog/src/go2_behaviors/README.md)。
 
 ## 建图与地图保存
 

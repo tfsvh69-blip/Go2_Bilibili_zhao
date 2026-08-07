@@ -2,11 +2,16 @@
 
 ## 当前状态
 
-更新时间：2026-08-06
+更新时间：2026-08-07
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
 Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
+
+当前已增加仅面向 Gazebo 的动作控制包 `go2_behaviors`，可执行打招呼、点头、
+伸展、趴下、挥爪和简单舞蹈，并使用 `stand` 从保持趴下恢复。动作复用现有
+CHAMP、`ros2_control` 和标准 `FollowJointTrajectory` 接口，不等同于真机
+Unitree Sport API。
 
 焊死腿关节、通过 planar-move 滑行的旧简化工作空间 `go2_ws/` 已于
 2026-08-06 删除；其专用环境脚本 `scripts/setup_go2_ws.bash` 同时删除。后续
@@ -21,6 +26,97 @@ bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
 source scripts/setup_simdog.bash
 ```
+
+## 2026-08-07 Go2 仿真动作
+
+### 阶段目标
+
+- 在没有真机的情况下实现打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
+- 复用成熟控制接口，避免重新实现关节控制器和自定义 ROS 消息。
+- 防止 CHAMP 步态与动作轨迹同时写入同一个控制器。
+
+### 调研与选择
+
+- 对照 Unitree SDK2 Go2 `SportClient`，确认官方提供 `Hello`、`Stretch` 等
+  真机 RPC 接口，但实际运动策略位于真机固件中，不能直接复用于 Gazebo。
+- 对照 CHAMP 上游保留现有四足站姿、关节顺序和步态控制，不复制其控制算法。
+- 采用 ROS 2 `joint_trajectory_controller` 已有的标准
+  `control_msgs/action/FollowJointTrajectory` 接口，没有新建自定义消息或
+  重复实现轨迹控制器。
+- 参考来源：
+  - CHAMP：<https://github.com/chvmp/champ>
+  - Unitree SDK2：
+    <https://github.com/unitreerobotics/unitree_sdk2/blob/main/include/unitree/robot/go2/sport/sport_client.hpp>
+  - ROS 2 控制器文档：
+    <https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/userdoc.html>
+- CHAMP 保持 BSD-3-Clause，ROS 2 控制组件为 Apache-2.0；新增
+  `go2_behaviors` 使用 BSD-3-Clause，没有复制或引入第三方源码。
+
+### 实际操作
+
+- 新增 `simdog/src/go2_behaviors` ament Python 包和统一命令：
+
+  ```bash
+  ros2 run go2_behaviors go2_behavior \
+      {hello,nod,stretch,lie,wave,dance,stand}
+  ```
+
+- `champ_base` 新增
+  `/quadruped_controller_node/set_behavior_mode` 标准 `SetBool` 服务。进入
+  行为模式后停止 CHAMP 关节轨迹并忽略速度、机身姿态输入；普通动作结束后自动
+  恢复 CHAMP。
+- `lie` 完成后保持动作控制权和趴下姿态，`stand` 平滑恢复站姿后再恢复 CHAMP。
+- 动作节点启动时读取实际 `/joint_states` 作为轨迹起点，内置关键帧完整性、有限值
+  和 URDF 关节限位检查，并用进程锁拒绝并行动作；动作结束后读取
+  `/odom/ground_truth` 检查机身高度、横滚和俯仰，防止把“关节目标成功”误判为
+  “机器人动作成功”。
+- 为 Gazebo 关节速度抖动设置明确的动作目标容差和结束时间容差，避免标准动作服务
+  因默认停止速度阈值长期不返回。
+- 更新依赖脚本、根目录 README、`simdog/README.md` 和动作包 README；
+  `AGENTS.md`、`CLAUDE.md` 同步加入新包与真机边界。
+
+### 构建与闭环验证
+
+构建和静态检查通过：
+
+```bash
+python3 -m py_compile \
+    simdog/src/go2_behaviors/go2_behaviors/behavior_runner.py
+colcon build --symlink-install --packages-select champ_base go2_behaviors
+cmp -s AGENTS.md CLAUDE.md
+```
+
+最终使用独立 `ROS_DOMAIN_ID=109` 和
+`GAZEBO_MASTER_URI=http://127.0.0.1:11409` 启动无界面完整四足 Gazebo，
+两个 `ros2_control` 控制器均为 `active`。六个动作依次返回成功，且动作结束
+后的 `/odom/ground_truth` 结果为：
+
+```text
+hello：  z=0.214 m，机身水平
+nod：    z=0.215 m，机身水平
+stretch：z=0.215 m，机身水平
+wave：   z=0.215 m，机身水平
+dance：  z=0.216 m，机身水平，存在预期的偏航变化
+lie：    z=0.094 m，保持趴下
+stand：  z=0.216 m，恢复站立
+```
+
+`lie` 保持期间监听
+`/joint_group_effort_controller/joint_trajectory` 两秒没有收到 CHAMP 消息，
+确认控制权仲裁有效。并行启动第二个动作会以退出码 `2` 拒绝，首个动作继续正常
+完成。
+
+初版 `wave` 抬腿幅度过大，实测造成侧翻；最终版本缩短右前腿并降低横摆幅度后，
+在两次独立仿真中均保持约 `0.215 m` 站立高度。不能只凭动作服务返回成功判断
+动力学动作有效，因此运行入口现在会自动执行上述动力学姿态检查。最终还在独立
+`ROS_DOMAIN_ID=110` 中复测 `hello -> lie -> stand`，运行时检查分别得到
+`z=0.188/0.092/0.191 m`，横滚和俯仰均在 `0.016 rad` 以内。
+
+### 运行边界
+
+- 这些轨迹只针对当前 Go2 Gazebo 模型和控制器参数，不可直接下发真机。
+- 动作必须串行执行；执行期间不要遥控。异常中断或保持趴下后先执行 `stand`。
+- 仿真动作是确定性关键帧，不具备真机运动策略的在线平衡、落脚规划和安全保护。
 
 ## 2026-08-06 TF 所有权统一
 

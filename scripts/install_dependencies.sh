@@ -42,6 +42,7 @@ apt-get install -y \
     python3-colcon-common-extensions \
     python3-rosdep \
     ros-humble-camera-info-manager \
+    ros-humble-control-msgs \
     ros-humble-diagnostic-updater \
     ros-humble-ecl-threads \
     ros-humble-gazebo-ros-pkgs \

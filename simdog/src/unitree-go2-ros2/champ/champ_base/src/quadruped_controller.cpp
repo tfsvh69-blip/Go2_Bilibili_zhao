@@ -40,7 +40,8 @@ QuadrupedController::QuadrupedController():
     clock_(*this->get_clock()),
     body_controller_(base_),
     leg_controller_(base_, rosTimeToChampTime(clock_.now())),
-    kinematics_(base_)
+    kinematics_(base_),
+    behavior_mode_(false)
 {
     std::string joint_control_topic = "joint_group_position_controller/command";
     std::string knee_orientation;
@@ -70,6 +71,13 @@ QuadrupedController::QuadrupedController():
         "cmd_vel/smooth", 10, std::bind(&QuadrupedController::cmdVelCallback_, this,  std::placeholders::_1));
     cmd_pose_subscription_ = this->create_subscription<geometry_msgs::msg::Pose>(
         "body_pose", 1,  std::bind(&QuadrupedController::cmdPoseCallback_, this,  std::placeholders::_1));
+    behavior_mode_service_ = this->create_service<std_srvs::srv::SetBool>(
+        "~/set_behavior_mode",
+        std::bind(
+            &QuadrupedController::setBehaviorMode_,
+            this,
+            std::placeholders::_1,
+            std::placeholders::_2));
     
     if(publish_joint_control_)
     {
@@ -100,6 +108,12 @@ QuadrupedController::QuadrupedController():
 
 void QuadrupedController::controlLoop_()
 {
+    // 行为模式下由标准 FollowJointTrajectory 接口独占关节控制权。
+    if (behavior_mode_)
+    {
+        return;
+    }
+
     float target_joint_positions[12];
     geometry::Transformation target_foot_positions[4];
     bool foot_contacts[4];
@@ -115,6 +129,11 @@ void QuadrupedController::controlLoop_()
 
 void QuadrupedController::cmdVelCallback_(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
+    if (behavior_mode_)
+    {
+        return;
+    }
+
     req_vel_.linear.x = msg->linear.x;
     req_vel_.linear.y = msg->linear.y;
     req_vel_.angular.z = msg->angular.z;
@@ -122,6 +141,11 @@ void QuadrupedController::cmdVelCallback_(const geometry_msgs::msg::Twist::Share
 
 void QuadrupedController::cmdPoseCallback_(const geometry_msgs::msg::Pose::SharedPtr msg)
 {   
+    if (behavior_mode_)
+    {
+        return;
+    }
+
     
     tf2::Quaternion quat(
         msg->orientation.x,
@@ -140,6 +164,28 @@ void QuadrupedController::cmdPoseCallback_(const geometry_msgs::msg::Pose::Share
     req_pose_.position.x = msg->position.x;
     req_pose_.position.y = msg->position.y;
     req_pose_.position.z = msg->position.z +  gait_config_.nominal_height;
+}
+
+void QuadrupedController::setBehaviorMode_(
+    const std_srvs::srv::SetBool::Request::SharedPtr request,
+    std_srvs::srv::SetBool::Response::SharedPtr response)
+{
+    behavior_mode_ = request->data;
+
+    if (behavior_mode_)
+    {
+        req_vel_.linear.x = 0.0;
+        req_vel_.linear.y = 0.0;
+        req_vel_.angular.z = 0.0;
+        response->message = "已暂停 CHAMP 关节指令，行为控制器获得控制权";
+    }
+    else
+    {
+        response->message = "已恢复 CHAMP 关节指令";
+    }
+
+    response->success = true;
+    RCLCPP_INFO(this->get_logger(), "%s", response->message.c_str());
 }
 
 void QuadrupedController::publishJoints_(float target_joints[12])

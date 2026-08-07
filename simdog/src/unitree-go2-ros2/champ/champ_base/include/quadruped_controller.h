@@ -47,6 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "tf2/LinearMath/Matrix3x3.h"
 
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 #include <trajectory_msgs/msg/joint_trajectory.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 
@@ -59,6 +60,7 @@ class QuadrupedController: public rclcpp::Node
     rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_commands_publisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_states_publisher_;
     rclcpp::Publisher<champ_msgs::msg::ContactsStamped>::SharedPtr foot_contacts_publisher_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr behavior_mode_service_;
 
     rclcpp::TimerBase::SharedPtr loop_timer_;
     rclcpp::Clock clock_;
@@ -79,6 +81,7 @@ class QuadrupedController: public rclcpp::Node
     bool publish_joint_states_;
     bool publish_joint_control_;
     bool in_gazebo_;
+    bool behavior_mode_;
 
     void controlLoop_();
     
@@ -87,6 +90,9 @@ class QuadrupedController: public rclcpp::Node
 
     void cmdVelCallback_(const geometry_msgs::msg::Twist::SharedPtr msg);
     void cmdPoseCallback_(const geometry_msgs::msg::Pose::SharedPtr msg);
+    void setBehaviorMode_(
+        const std_srvs::srv::SetBool::Request::SharedPtr request,
+        std_srvs::srv::SetBool::Response::SharedPtr response);
 
     public:
         QuadrupedController();

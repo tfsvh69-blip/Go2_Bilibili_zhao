@@ -50,6 +50,30 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 每条命令各占一个终端。桌面环境也可从项目根目录执行 `bash simdog/start.sh`
 自动打开多个终端：没有地图时进入建图模式，有地图时自动切换到 NDT 重定位模式。
 
+## 仿真动作
+
+启动完整四足 Gazebo 后，可在另一个已加载工作空间的终端执行：
+
+```bash
+ros2 run go2_behaviors go2_behavior hello
+ros2 run go2_behaviors go2_behavior nod
+ros2 run go2_behaviors go2_behavior stretch
+ros2 run go2_behaviors go2_behavior lie
+ros2 run go2_behaviors go2_behavior wave
+ros2 run go2_behaviors go2_behavior dance
+```
+
+`lie` 会保持趴下并暂停 CHAMP，使用以下命令恢复：
+
+```bash
+ros2 run go2_behaviors go2_behavior stand
+```
+
+程序复用现有 CHAMP、`ros2_control` 和标准
+`FollowJointTrajectory` 接口。动作期间由行为节点独占关节控制权，完成后自动恢复
+CHAMP；不要并行执行多个动作或同时遥控。详细原理、许可证和真机边界见
+[`go2_behaviors/README.md`](src/go2_behaviors/README.md)。
+
 ## 地图与重定位
 
 LIO-SAM 运行期间执行：

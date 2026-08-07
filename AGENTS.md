@@ -22,6 +22,7 @@
 本目录是 Unitree Go2 完整四足仿真开发环境，目标系统为 Ubuntu 22.04、ROS 2 Humble 和 Gazebo Classic 11。项目仅维护 `simdog/` 主 colcon 工作空间，不再维护焊死腿关节、依赖 planar-move 滑行的简化机器人。
 
 - `simdog/src/unitree-go2-ros2/`：Go2 模型、CHAMP 四足步态、`ros2_control`、Gazebo 世界和机器人配置。
+- `simdog/src/go2_behaviors/`：复用标准关节轨迹接口实现的打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
 - `simdog/src/LIO-SAM/`：Velodyne 与 IMU 融合建图。
 - `simdog/src/ndt_relocalization/`：基于 PCD 地图的 NDT 重定位 ROS 2 节点。
 - `simdog/src/fast_gicp/`：CUDA NDT 点云配准后端。
@@ -66,6 +67,7 @@ source install/setup.bash
 ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
 ros2 launch lio_sam lidar.launch.py rviz:=true
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
+ros2 run go2_behaviors go2_behavior hello
 ```
 
 桌面环境可执行 `bash simdog/start.sh`，依次启动无界面 Gazebo、LIO-SAM、键盘遥控，并在找到 PCD 地图时启动 NDT。默认地图为 `~/go2_maps/latest/GlobalMap.pcd`；没有地图时必须跳过 NDT。建图完成后使用 `bash simdog/save_Map.sh` 保存地图。
@@ -114,6 +116,7 @@ bash scripts/verify_gpu_runtime.sh
 
 - Velodyne 使用 `gpu_ray`；改回高分辨率 CPU `ray` 会显著降低 Gazebo 实时率。
 - 当前已验证遥控、四足步态、传感器、LIO-SAM 建图、地图保存和 NDT 重定位。
+- 仿真动作通过 `FollowJointTrajectory` 控制当前 Gazebo 模型，不等同于真机固件中的 Unitree Sport API，不可直接下发真机。
 - Nav2 和 SLAM Toolbox 依赖已安装，但 Go2 的完整自主导航参数尚未完成调优，不能视为开箱即用。
 - LIO-SAM 当前关闭回环检测；正式地图需要在目标场景重新采集并评估质量。
 - NDT 使用前必须提供有效 `GlobalMap.pcd`，并通过 `/initialpose` 给出合理初始位姿。
