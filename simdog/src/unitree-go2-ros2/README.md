@@ -37,8 +37,9 @@
 - &check; Gazebo + 遥控机器人可正常运行
 - &check; 已添加 IMU 和 2D 激光雷达
 - &check; 已添加 3D 激光雷达（Velodyne）
-- &cross; Gazebo + SLAM 演示
-- &cross; Gazebo + Nav2 集成演示
+- &check; 本仓库已通过外层 `LIO-SAM` 包完成 Gazebo 建图与地图保存
+- &check; 本仓库已通过外层 `go2_behaviors` 包完成常用仿真动作
+- &cross; Nav2 参数尚未完成调优，不能视为开箱即用
 
 ## 1. 安装
 
@@ -122,6 +123,28 @@ ros2 launch go2_config gazebo_velodyne.launch.py
 ```bash
 ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true
 ```
+
+### 2.7 执行 Gazebo 仿真动作
+
+动作包位于同一 `simdog` 工作空间的 `src/go2_behaviors/`，复用当前
+`joint_trajectory_controller`。先启动 2.5 节的完整 Gazebo，再在新终端执行：
+
+```bash
+ros2 run go2_behaviors go2_behavior hello
+ros2 run go2_behaviors go2_behavior nod
+ros2 run go2_behaviors go2_behavior stretch
+ros2 run go2_behaviors go2_behavior wave
+ros2 run go2_behaviors go2_behavior dance
+ros2 run go2_behaviors go2_behavior lie
+```
+
+`lie` 会保持趴下并暂停 CHAMP，使用以下命令恢复：
+
+```bash
+ros2 run go2_behaviors go2_behavior stand
+```
+
+这些动作只适配当前 Gazebo 模型，不是 Unitree 真机 Sport API。
 
 ## 3. 步态参数调优
 

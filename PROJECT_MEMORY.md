@@ -2,16 +2,21 @@
 
 ## 当前状态
 
-更新时间：2026-08-07
+更新时间：2026-08-09
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
 Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
+当前执行 `colcon list` 可识别 21 个 ROS 2 包。
 
 当前已增加仅面向 Gazebo 的动作控制包 `go2_behaviors`，可执行打招呼、点头、
 伸展、趴下、挥爪和简单舞蹈，并使用 `stand` 从保持趴下恢复。动作复用现有
 CHAMP、`ros2_control` 和标准 `FollowJointTrajectory` 接口，不等同于真机
 Unitree Sport API。
+
+当前已固定引入 Unitree 官方 `unitree_ros2 v0.3.0` 的 `unitree_go`、
+`unitree_api`，并增加 `go2_unitree_sim_bridge`。它让所列 Sport API 上层程序在
+Gazebo 与真机间复用官方消息和话题，但不承诺真机固件行为等价。
 
 焊死腿关节、通过 planar-move 滑行的旧简化工作空间 `go2_ws/` 已于
 2026-08-06 删除；其专用环境脚本 `scripts/setup_go2_ws.bash` 同时删除。后续
@@ -26,6 +31,88 @@ bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
 source scripts/setup_simdog.bash
 ```
+
+## 2026-08-09 Unitree SDK2/ROS 2 兼容桥 v1
+
+### 阶段目标与调研
+
+- 保留 Gazebo Classic、CHAMP、LIO-SAM、NDT 和传感器链，在唯一 `simdog`
+  工作空间增加 Unitree 接口级兼容层，不实现 `/lowcmd`。
+- 固定复用 Unitree 官方 `unitree_ros2 v0.3.0` 中 BSD-3-Clause 的
+  `unitree_go`、`unitree_api`，来源提交为
+  `66ae09858245ac3d2231c0cc209e36a88f8d7d03`。消息定义保持官方版本；仅在
+  `package.xml` 补齐 CMake 已使用的 `rosidl_generator_dds_idl` 构建依赖并规范
+  占位元数据；消息字段、类型和顺序不变，仅整理尾部空白。
+- 参考官方 `unitree_mujoco` 的 CycloneDDS Domain 1/loopback 仿真和
+  Domain 0/真机网卡切换方式，但没有引入 MuJoCo。来源：
+  <https://github.com/unitreerobotics/unitree_ros2/tree/v0.3.0>、
+  <https://github.com/unitreerobotics/unitree_mujoco>。
+
+### 实际操作
+
+- 新增 `go2_unitree_sim_bridge`，发布 `/sportmodestate`、
+  `/lf/sportmodestate`、`/lowstate`、`/lf/lowstate` 和
+  `/api/sport/response`；订阅 `/api/sport/request`。
+- 支持 API 1002、1003、1004、1005、1006、1007、1008、1009、1010、
+  1016、1017、1022。Move 按 CHAMP 上限持续发布并由 StopMove 清零；Euler
+  拒绝非有限值和超限姿态；站立、坐卧、恢复与表演动作调用现有行为服务。
+- `go2_behaviors` 增加串行服务端、`stop` 取消入口和状态话题。主 Gazebo 启动
+  文件默认以 `unitree_bridge:=true` 启动服务端与桥接，可显式关闭。
+- Sport 状态使用真值里程计、IMU 和足端 TF；LowState 前 12 个电机与四足接触
+  统一为 `FR、FL、RR、RL`。发布定时器使用稳态时钟，消息时间戳使用真值里程计
+  的仿真时间；输入超时会停止 Move、设置错误状态并节流告警。
+- 依赖脚本增加 CycloneDDS RMW 和 DDS IDL 生成器；增加仿真
+  `setup_unitree_sim.bash` 与真机 `setup_unitree_real.bash` 环境入口。
+
+### 构建与验证
+
+会话初因 `sudo` 交互密码不可用，曾临时从 ROS 软件源解包
+`rosidl_generator_dds_idl`、CycloneDDS RMW 及其运行依赖完成构建和 loopback
+验证；随后已于 2026-08-09 通过 `bash scripts/install_dependencies.sh` 正式
+安装到系统，不再依赖 `/tmp` 临时环境：
+
+```text
+ros-humble-rmw-cyclonedds-cpp 1.3.4
+ros-humble-cyclonedds 0.10.5
+ros-humble-rosidl-generator-dds-idl 0.8.1
+```
+
+已完成的验证：
+
+```bash
+test "$(cd simdog && colcon list | wc -l)" -eq 21
+colcon build --symlink-install --packages-select \
+    unitree_api unitree_go go2_behaviors go2_unitree_sim_bridge go2_config
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
+    simdog/src/go2_unitree_sim_bridge/test  # 本机 anyio 插件加载 _pytest.scope 失败，必须禁用自动加载
+python3 -m py_compile <新增及修改的 Python 文件>
+bash -n scripts/setup_unitree_sim.bash scripts/setup_unitree_real.bash simdog/start.sh
+```
+
+在独立 `ROS_DOMAIN_ID=173`、无界面 Gazebo 中确认 `/clock`、里程计、IMU、
+关节、Velodyne 和控制器正常；四个 Unitree 状态话题实测约为
+`49.8/10.0/100.9/10.0 Hz`，时间戳、IMU、电机、足端 TF 和接触均有有效数据。
+Move 限幅、StopMove、Euler、非法参数、不支持 API、`noreply`、忙、取消及原动作
+失败响应均符合预期；StandUp、StandDown、RecoveryStand、Sit、RiseSit、Hello、
+Stretch、Dance1 均通过兼容桥执行成功。
+另外在临时解包的 `rmw_cyclonedds_cpp` 环境中，以 `lo`、Domain 176 完成独立
+进程间 `/api/sport/request`/`response` 请求响应，确认 CycloneDDS 环境入口有效。
+Domain 177 下 LIO-SAM 的四个核心节点也均能使用 CycloneDDS 启动并等待数据；
+12 秒冒烟结束时由 `timeout` 发送 SIGINT。该项没有输入传感器数据或正式地图。
+完整 Gazebo 初次切换 CycloneDDS 时暴露了默认自动 participant 索引不足的问题，
+两个环境脚本现均设置 `MaxAutoParticipantIndex=100`。修复后在 Domain 179、独立
+Gazebo master 下，两个控制器、行为服务端和桥接全部启动，四个状态话题实测
+`50.2/10.0/99.9/10.0 Hz`，且时间戳、IMU、电机和足端 TF 均为有效非零数据；
+桥接与服务端也能随 launch 干净退出。
+
+### 运行边界与下一步
+
+- `range_obstacle`、BMS、温度、序列号、CRC 和没有可信来源的力矩保持零；足底
+  接触只是 `0/1`，不是真实力。输入首次就绪前不发布状态。
+- 不模拟 `/lowcmd`、无线遥控、真机内部平衡、安全固件或高风险翻转动作。
+- Unitree Move 活动期间禁止键盘遥控；动作轨迹不可下发真机。
+- 本阶段没有真机硬件和正式 PCD 地图验证。后续真机测试必须先核对网卡、Domain、
+  安全场地和急停措施，仿真桥不得与真机 DDS 图同时启动。
 
 ## 2026-08-07 Go2 仿真动作
 
@@ -74,6 +161,9 @@ source scripts/setup_simdog.bash
   因默认停止速度阈值长期不返回。
 - 更新依赖脚本、根目录 README、`simdog/README.md` 和动作包 README；
   `AGENTS.md`、`CLAUDE.md` 同步加入新包与真机边界。
+- 后续文档同步将 `文档/simdog_packages_guide.md` 从过期的 16 包结构更新为
+  实测的 18 包结构，补充动作控制链、命令表、调参和故障排查，并校正 NDT 输出、
+  D435 启用状态、Git 状态以及失效的相对链接。
 
 ### 构建与闭环验证
 
@@ -84,6 +174,8 @@ python3 -m py_compile \
     simdog/src/go2_behaviors/go2_behaviors/behavior_runner.py
 colcon build --symlink-install --packages-select champ_base go2_behaviors
 cmp -s AGENTS.md CLAUDE.md
+test "$(cd simdog && colcon list | wc -l)" -eq 18
+git diff --check
 ```
 
 最终使用独立 `ROS_DOMAIN_ID=109` 和

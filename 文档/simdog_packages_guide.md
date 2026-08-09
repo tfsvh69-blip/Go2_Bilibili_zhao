@@ -1,10 +1,13 @@
 # simdog 工作空间包结构详解
 
-> 最后更新：2026-08-06
+> 最后更新：2026-08-09
 
 ## 概述
 
-`simdog/` 是本项目的唯一 colcon 工作空间，其 `src/` 目录下共有 **16 个 ROS 2 包**（10 个独立功能包和 6 个 CHAMP 子包），共同组成完整的 Unitree Go2 四足机器人仿真开发环境。
+`simdog/` 是本项目的唯一 colcon 工作空间。经 `colcon list` 实际识别到
+**21 个 ROS 2 包**：10 个工作空间级功能/接口包，以及 `unitree-go2-ros2/` 下的
+8 个 CHAMP 包、1 个遥控包、1 个 Go2 描述包和 1 个 Go2 配置包。
+这些包共同组成完整的 Unitree Go2 四足机器人仿真开发环境。
 
 目标系统：Ubuntu 22.04 / ROS 2 Humble / Gazebo Classic 11。
 
@@ -15,12 +18,15 @@
 ```
 simdog/src/
 ├── fast_gicp/                   # CUDA 加速点云配准库
+├── go2_behaviors/               # 常用仿真动作与 CHAMP 控制权仲裁
+├── go2_unitree_sim_bridge/      # Unitree Sport API 仿真兼容桥
 ├── LIO-SAM/                     # 激光-惯性紧耦合 SLAM
 ├── ndt_omp_ros2/                # OpenMP 加速 NDT 配准
 ├── ndt_relocalization/          # 基于 PCD 地图的 NDT 重定位
 ├── pointcloud_to_laserscan/     # 点云 ↔ 激光扫描转换
 ├── realsense_ros_gazebo/        # RealSense 相机 Gazebo 仿真
-└── unitree-go2-ros2/            # Go2 机器人主工程（含 9 个子包）
+├── unitree_ros2_interfaces/     # 官方 v0.3.0 unitree_go/unitree_api
+└── unitree-go2-ros2/            # Go2 机器人主工程（含 11 个 ROS 2 包）
     ├── champ/                   # CHAMP 四足控制器框架
     │   ├── champ_base/          #   核心驱动
     │   ├── champ_bringup/       #   基础启动文件
@@ -39,9 +45,13 @@ simdog/src/
 
 ## 二、你提到的 simdog 核心包具体在哪里体现？
 
-你列出的 12 个包 `champ, champ_base, champ_bringup, champ_config, champ_description, champ_gazebo, champ_msgs, champ_navigation, champ_teleop, go2_config, go2_description` 在代码中的分布如下：
+原有 CHAMP 与 Go2 的 11 个包
+`champ, champ_base, champ_bringup, champ_config, champ_description,
+champ_gazebo, champ_msgs, champ_navigation, champ_teleop, go2_config,
+go2_description` 在代码中的分布如下；工作空间顶层的动作包、Unitree 兼容桥和
+官方接口快照见 3.8 至 3.10 节。
 
-### 2.1 CHAMP 框架（7 个子包）
+### 2.1 CHAMP 框架（8 个子包）
 
 路径：`simdog/src/unitree-go2-ros2/champ/`
 
@@ -57,9 +67,9 @@ simdog/src/
 | **champ_navigation** | `champ/champ_navigation/` | Nav2 导航集成启动文件（`launch/`）和 RViz 导航配置 |
 
 **核心代码入口：**
-- 步态算法算法头文件：[champ/include/champ/](simdog/src/unitree-go2-ros2/champ/champ/include/champ/)
-- 基础驱动实现：[champ_base/src/](simdog/src/unitree-go2-ros2/champ/champ_base/src/)
-- 步态配置文件：[champ_config/config/gait/](simdog/src/unitree-go2-ros2/champ/champ_config/config/gait/)
+- 步态算法头文件：[champ/include/champ/](../simdog/src/unitree-go2-ros2/champ/champ/include/champ/)
+- 基础驱动实现：[champ_base/src/](../simdog/src/unitree-go2-ros2/champ/champ_base/src/)
+- 步态配置文件：[go2_config/config/gait/](../simdog/src/unitree-go2-ros2/robots/configs/go2_config/config/gait/)
 
 ### 2.2 遥控
 
@@ -129,7 +139,7 @@ simdog/src/
 **关键文件：**
 - CUDA 核心：`src/fast_gicp/cuda/`（11 个 .cu 文件）
 - Python 绑定：`setup.py`（`pygicp` 模块）
-- 集成说明：[GO2_INTEGRATION.md](simdog/src/fast_gicp/GO2_INTEGRATION.md)（已中文，记录 CUDA 12.8 + RTX 4060 适配）
+- 集成说明：[GO2_INTEGRATION.md](../simdog/src/fast_gicp/GO2_INTEGRATION.md)（已中文，记录 CUDA 12.8 + RTX 4060 适配）
 
 **在本项目中：** 为 `ndt_relocalization` 提供 GPU 加速的 NDT 配准后端。
 
@@ -177,7 +187,7 @@ simdog/src/
 **功能：** 加载预构建的 PCD 点云地图，通过 NDT 扫描匹配实现实时重定位：
 - 加载 LIO-SAM 保存的 `GlobalMap.pcd`
 - 订阅当前 `/velodyne_points` 与地图进行 NDT 配准
-- 输出重定位后的里程计 `/odom/local`
+- 发布 `/ndt_pose`、`/ndt_odom` 和动态 `map -> odom`
 
 **核心文件：**
 - `src/ndt_relocalization_node.cpp`（32KB）— 主重定位节点
@@ -221,42 +231,91 @@ simdog/src/
 - 键盘：基于 teleop_twist_keyboard
 - 手柄：Logitech F710 映射（左摇杆控制移动，右摇杆控制姿态）
 
+### 3.8 go2_behaviors — 常用 Gazebo 动作
+
+**路径：** `simdog/src/go2_behaviors/`
+
+**功能：** 为当前 Go2 Gazebo 模型提供打招呼、点头、伸展、趴下、挥爪和简单
+舞蹈，并提供 `stand` 从保持趴下恢复：
+
+| 命令参数 | 动作 | 结束状态 |
+|---|---|---|
+| `hello` | 点头后挥动右前爪 | 自动恢复 CHAMP |
+| `nod` | 前后腿配合完成两次点头 | 自动恢复 CHAMP |
+| `stretch` | 前后方向伸展 | 自动恢复 CHAMP |
+| `wave` | 小幅抬起并横摆右前爪 | 自动恢复 CHAMP |
+| `dance` | 交替摆髋和屈腿 | 自动恢复 CHAMP |
+| `lie` | 分两段降低机身 | 保持趴下并暂停 CHAMP |
+| `stand` | 从当前姿态恢复稳定站姿 | 恢复 CHAMP |
+
+**控制链：**
+
+1. 读取 `/joint_states`，使用实际关节位置作为轨迹起点。
+2. 调用 `/quadruped_controller_node/set_behavior_mode` 暂停 CHAMP 关节输出。
+3. 通过标准
+   `/joint_group_effort_controller/follow_joint_trajectory` action 发送轨迹。
+4. 使用 `/odom/ground_truth` 检查机身高度、横滚和俯仰。
+5. 除 `lie` 外，动作完成后自动把控制权交还 CHAMP。
+
+程序还会检查关节限位并拒绝并行动作。关键帧与时长集中在
+`go2_behaviors/behavior_runner.py` 的 `BEHAVIORS` 中。修改后必须在独立 Gazebo
+中检查机身高度与姿态，不能只看 action 是否返回成功。
+
+该包复用 CHAMP、`ros2_control` 和标准 `FollowJointTrajectory`，没有复制控制器
+源码或定义自有消息。动作仅适配当前 Gazebo 模型，不可直接下发 Unitree 真机。
+
+### 3.9 go2_unitree_sim_bridge — Unitree 接口兼容桥
+
+**路径：** `simdog/src/go2_unitree_sim_bridge/`
+
+**功能：** 把真值里程计、IMU、关节、接触与 TF 转换为官方
+`SportModeState`、`LowState`，并把受支持的 `/api/sport/request` 转换为
+`/cmd_vel`、`/body_pose` 或 3.8 节行为服务。支持 Move、Euler、站立、坐卧、
+恢复、Hello、Stretch 和 Dance1；不实现 `/lowcmd` 或真机固件策略。
+
+### 3.10 unitree_go / unitree_api — 官方消息接口
+
+**路径：** `simdog/src/unitree_ros2_interfaces/`
+
+两个包固定来自 Unitree 官方 `unitree_ros2 v0.3.0`，保留 BSD-3-Clause 许可证和
+提交来源。它们只定义 ROS 2 消息，不包含 Unitree 真机运动固件。
+
 ---
 
 ## 四、包之间的依赖与数据流
 
 ```
-                          ┌──────────────────────────┐
-                          │   Gazebo Classic 11       │
-                          │   (物理仿真引擎)            │
-                          └──────┬───────────────────┘
-                                 │
-              ┌──────────────────┼──────────────────┐
-              ▼                  ▼                  ▼
-     /velodyne_points     /imu/data          /joint_states
-     (3D 激光点云)         (IMU 惯导)         (关节角度)
-              │                  │                  │
-              ▼                  ▼                  ▼
-     ┌────────────┐    ┌─────────────┐    ┌──────────────┐
-     │  LIO-SAM    │    │ champ_base  │    │ champ_gazebo │
-     │ (SLAM 建图)  │    │ (步态控制)   │    │ (仿真桥接)    │
-     └─────┬──────┘    └──────┬──────┘    └──────────────┘
-           │                  │
-           ▼                  ▼
-    GlobalMap.pcd      /cmd_vel (速度指令)
-           │                  ▲
-           ▼                  │
-  ┌─────────────────┐  ┌──────┴──────┐
-  │ndt_relocalization│  │champ_teleop │
-  │  (NDT 重定位)     │  │ (遥控节点)   │
-  └────────┬────────┘  └─────────────┘
-           │
-           ▼
-    /odom/local
-    (重定位里程计)
-           │
-           ├── 使用 fast_gicp (CUDA) 作为配准后端
-           └── 或回退到 ndt_omp_ros2 (CPU OpenMP)
+champ_teleop ── /cmd_vel ──> CHAMP ───────────────┐
+                              │                  │
+go2_behaviors ── 暂停 CHAMP ──┘                  ▼
+       │                              FollowJointTrajectory
+       └──────────────────────────────> joint_trajectory_controller
+                                                    │
+                                                    ▼
+                                             Gazebo 12 关节
+                                                    │
+                   ┌────────────────────────────────┼──────────────┐
+                   ▼                                ▼              ▼
+          /velodyne_points                     /imu/data      /joint_states
+                   │                                │              │
+                   └──────────────┬─────────────────┘              │
+                                  ▼                                │
+                              LIO-SAM                              │
+                                  │                                │
+                         GlobalMap.pcd                             │
+                                  │                                │
+                                  ▼                                │
+                      ndt_relocalization                           │
+                         │              │
+                         ▼              ▼
+                  /ndt_pose, /ndt_odom  map -> odom
+
+fast_gicp (CUDA) 或 ndt_omp_ros2 (CPU) ──> NDT 配准后端
+
+go2_unitree_sim_bridge <── 状态/TF ── Gazebo
+          │
+          ├── 官方 Unitree 状态话题
+          └── Sport API ──> /cmd_vel、/body_pose、go2_behaviors
 ```
 
 ---
@@ -290,17 +349,18 @@ simdog/src/
 - LIO-SAM 使用 9 轴 IMU 数据进行点云去畸变和姿态初始化
 - 参数配置在 `LIO-SAM/config/params.yaml` 中
 
-### 5.3 RealSense 深度相机（可选）
+### 5.3 RealSense D435 深度相机
 
-- 通过 `depthcam.xacro` 可选挂载
+- 主模型 `robot_VLP.xacro` 当前挂载 D435
 - 提供 RGB 图像和深度图像
-- 当前未在主启动流程中启用
+- `gazebo_velodyne.launch.py` 启动时会加载 `realsense_gazebo_plugin`
 
 ---
 
 ## 六、CHAMP 步态控制关键文件
 
-如你当前打开的 [gait.yaml](simdog/src/unitree-go2-ros2/robots/configs/go2_config/config/gait/gait.yaml)，步态参数直接影响 Go2 的行走行为：
+如 [gait.yaml](../simdog/src/unitree-go2-ros2/robots/configs/go2_config/config/gait/gait.yaml)
+所示，步态参数直接影响 Go2 的行走行为：
 
 | 参数 | 含义 | 单位 |
 |---|---|---|
@@ -321,7 +381,7 @@ simdog/src/
 
 ```bash
 # 环境加载
-source scripts/setup_simdog.bash
+source scripts/setup_unitree_sim.bash
 
 # 无界面 Gazebo + VLP-16 + RViz
 ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
@@ -332,8 +392,14 @@ ros2 launch lio_sam lidar.launch.py rviz:=true
 # 键盘遥控
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
-# 保存 LIO-SAM 地图
-ros2 service call /lio_sam/save_map lio_sam/srv/SaveMap
+# 打招呼（其他参数：nod/stretch/wave/dance/lie）
+ros2 run go2_behaviors go2_behavior hello
+
+# 从保持趴下恢复
+ros2 run go2_behaviors go2_behavior stand
+
+# 保存 LIO-SAM 地图（LIO-SAM 必须仍在运行）
+bash simdog/save_Map.sh
 
 # NDT 重定位（需先有 GlobalMap.pcd）
 ros2 launch ndt_relocalization ndt_localization.launch.py \
@@ -343,7 +409,11 @@ ros2 launch ndt_relocalization ndt_localization.launch.py \
 # 验证关键话题
 ros2 topic hz /velodyne_points
 ros2 topic hz /imu/data
-ros2 topic echo --once /odom/local
+ros2 topic echo --once /odom
+ros2 topic echo --once /ndt_pose
+ros2 control list_controllers
+ros2 topic hz /sportmodestate
+ros2 topic hz /lowstate
 ```
 
 ---
@@ -351,6 +421,8 @@ ros2 topic echo --once /odom/local
 ## 八、参考链接
 
 - [CHAMP 官方仓库](https://github.com/chvmp/champ)
-- [LIO-SAM 论文 (IROS-2020)](./simdog/src/LIO-SAM/config/doc/paper.pdf)
+- [LIO-SAM 论文 (IROS-2020)](../simdog/src/LIO-SAM/config/doc/paper.pdf)
 - [fast_gicp 官方仓库](https://github.com/SMRT-AIST/fast_gicp)
-- [宇树科技 Unitree Robotics](https://github.com/unitreerobotics/unitree_ros)
+- [Unitree SDK2 Go2 SportClient](https://github.com/unitreerobotics/unitree_sdk2/blob/main/include/unitree/robot/go2/sport/sport_client.hpp)
+- [Unitree ROS 2 v0.3.0](https://github.com/unitreerobotics/unitree_ros2/tree/v0.3.0)
+- [ROS 2 joint_trajectory_controller](https://control.ros.org/humble/doc/ros2_controllers/joint_trajectory_controller/doc/userdoc.html)

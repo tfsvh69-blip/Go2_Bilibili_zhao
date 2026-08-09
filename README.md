@@ -11,6 +11,7 @@
 - Velodyne VLP-16、IMU、RealSense D435 和 GPS 仿真。
 - LIO-SAM 激光惯性建图与 PCD 地图保存。
 - 基于 `fast_gicp` CUDA D2D-NDT 或 OpenMP NDT 的全局重定位。
+- Unitree `unitree_go`/`unitree_api` 官方消息与 Sport API 仿真兼容桥。
 
 ## 当前硬件基线
 
@@ -36,6 +37,8 @@ GPU NDT 架构：sm_89
 ├── simdog/                         # 唯一 ROS 2 colcon 工作空间
 │   ├── src/
 │   │   ├── go2_behaviors/          # 打招呼、点头、伸展等仿真动作
+│   │   ├── go2_unitree_sim_bridge/ # Unitree Sport API 仿真兼容桥
+│   │   ├── unitree_ros2_interfaces/ # 固定的官方 v0.3.0 消息接口
 │   │   ├── unitree-go2-ros2/       # Go2、CHAMP、ros2_control、Gazebo
 │   │   ├── LIO-SAM/                # 激光惯性建图
 │   │   ├── ndt_relocalization/     # NDT 重定位节点
@@ -50,6 +53,8 @@ GPU NDT 架构：sm_89
 │   ├── install_gpu_dependencies.sh
 │   ├── build_workspaces.sh         # 当前只构建 simdog
 │   ├── setup_simdog.bash
+│   ├── setup_unitree_sim.bash      # CycloneDDS/lo/Domain 1
+│   ├── setup_unitree_real.bash     # CycloneDDS/真机网卡/Domain 0
 │   └── verify_gpu_runtime.sh
 ├── AGENTS.md                       # 协作规则
 ├── CLAUDE.md                       # 与 AGENTS.md 完全一致
@@ -86,6 +91,23 @@ source scripts/setup_simdog.bash
 脚本默认设置 `CUDA_VISIBLE_DEVICES=0`，并在双显卡环境中启用 NVIDIA PRIME
 Render Offload。可通过 `GO2_GPU_DEVICE` 选择物理 GPU，通过
 `GO2_FORCE_NVIDIA_RENDERING=0` 关闭强制 NVIDIA OpenGL。
+
+需要使用 Unitree 接口时，仿真终端统一改为：
+
+```bash
+source scripts/setup_unitree_sim.bash
+```
+
+该入口使用 CycloneDDS、回环接口 `lo` 和默认 `ROS_DOMAIN_ID=1`。已有
+`ROS_DOMAIN_ID` 或 `GO2_UNITREE_SIM_DOMAIN_ID` 可覆盖默认值。真机只配置通信
+环境，不启动仿真桥；必须显式传入已连接且处于 UP 状态的网卡：
+
+```bash
+source scripts/setup_unitree_real.bash enp3s0
+```
+
+真机入口默认 Domain 0，可用 `GO2_UNITREE_REAL_DOMAIN_ID` 覆盖。本阶段未使用
+真机硬件验证。
 
 ## 启动完整四足仿真
 
@@ -247,6 +269,37 @@ ros2 run go2_behaviors go2_behavior stand
 实现与开源复用说明见
 [`go2_behaviors/README.md`](simdog/src/go2_behaviors/README.md)。
 
+## Unitree ROS 2 兼容桥
+
+主 Gazebo 启动文件默认同时启动 `go2_behavior_server` 和
+`go2_unitree_sim_bridge`。无需兼容层时可显式关闭：
+
+```bash
+ros2 launch go2_config gazebo_velodyne.launch.py unitree_bridge:=false
+```
+
+桥接发布官方类型状态话题：
+
+| 话题 | 类型 | 默认频率 |
+|---|---|---:|
+| `/sportmodestate` | `unitree_go/msg/SportModeState` | 50 Hz |
+| `/lf/sportmodestate` | `unitree_go/msg/SportModeState` | 10 Hz |
+| `/lowstate` | `unitree_go/msg/LowState` | 100 Hz |
+| `/lf/lowstate` | `unitree_go/msg/LowState` | 10 Hz |
+| `/api/sport/response` | `unitree_api/msg/Response` | 按请求 |
+
+订阅 `/api/sport/request`，支持 `BalanceStand(1002)`、`StopMove(1003)`、
+`StandUp(1004)`、`StandDown(1005)`、`RecoveryStand(1006)`、`Euler(1007)`、
+`Move(1008)`、`Sit(1009)`、`RiseSit(1010)`、`Hello(1016)`、
+`Stretch(1017)` 和 `Dance1(1022)`。`Move` 限制为
+`x=±0.3 m/s`、`y=±0.25 m/s`、`yaw=±0.5 rad/s`，持续发布 `/cmd_vel`
+直到 `StopMove`；这段时间禁止同时运行键盘遥控。
+
+模拟器错误码为 `-32001` 参数错误、`-32002` 不支持、`-32003` 忙和
+`-32004` 下游失败。响应复制请求 `identity`，`noreply=true` 时不响应。
+更完整的字段映射、服务入口和边界见
+[`go2_unitree_sim_bridge/README.md`](simdog/src/go2_unitree_sim_bridge/README.md)。
+
 ## 建图与地图保存
 
 建图保存的完整顺序见上方“场景一”。以下命令必须在 LIO-SAM 尚未关闭时执行：
@@ -318,10 +371,12 @@ bash scripts/verify_gpu_runtime.sh
 ```bash
 ros2 topic hz /velodyne_points
 ros2 topic hz /imu/data
-ros2 topic echo --once /odom/local
 ros2 topic echo --once /odom
 ros2 topic hz /joint_states
 ros2 control list_controllers
+ros2 topic hz /sportmodestate
+ros2 topic hz /lowstate
+ros2 topic type /api/sport/request
 ros2 run tf2_ros tf2_echo odom base_footprint
 ros2 run tf2_ros tf2_echo base_link velodyne
 ```
@@ -344,5 +399,8 @@ ros2 topic echo --once /ndt_pose
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
 - Nav2 和 SLAM Toolbox 依赖已经安装，但 Go2 的完整自主导航参数尚未完成调优。
 - NDT 正式使用前必须准备有效 `GlobalMap.pcd` 并设置合理初始位姿。
+- Unitree 兼容桥只保证所列消息、话题和请求的接口级兼容，不模拟 `/lowcmd`、
+  BMS、无线遥控、真实足底力、障碍距离或真机固件的平衡与安全策略。
+- 仿真动作轨迹不可下发真机；真机环境脚本只完成 DDS 配置，尚无硬件验证结果。
 - 当前准确状态、历史验证结果和遗留问题以
   [PROJECT_MEMORY.md](PROJECT_MEMORY.md) 为准。

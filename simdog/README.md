@@ -2,6 +2,8 @@
 
 `simdog` 是本项目的主 ROS 2 Humble 工作空间，包含 CHAMP 四足步态、Go2
 Gazebo 模型、Velodyne、RealSense、LIO-SAM 和 NDT 重定位。
+当前 `colcon list` 共识别 21 个包，其中包含固定的 Unitree ROS 2 v0.3.0
+接口包与 Sport API 仿真兼容桥。
 
 ## 配置与构建
 
@@ -14,6 +16,9 @@ bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
 source scripts/setup_simdog.bash
 ```
+
+运行 Unitree 接口仿真时改用 `source scripts/setup_unitree_sim.bash`；它会继续
+加载本工作空间，并设置 CycloneDDS、`lo` 和默认 Domain 1。
 
 环境加载脚本默认设置 CUDA 设备 0，并在双显卡环境优先使用 NVIDIA OpenGL。
 如需确认整个 CUDA NDT 链路，执行：
@@ -73,6 +78,34 @@ ros2 run go2_behaviors go2_behavior stand
 `FollowJointTrajectory` 接口。动作期间由行为节点独占关节控制权，完成后自动恢复
 CHAMP；不要并行执行多个动作或同时遥控。详细原理、许可证和真机边界见
 [`go2_behaviors/README.md`](src/go2_behaviors/README.md)。
+
+行为服务端也可独立启动，并以服务串行动作：
+
+```bash
+ros2 run go2_behaviors go2_behavior_server
+ros2 service call /go2_behaviors/hello std_srvs/srv/Trigger '{}'
+ros2 service call /go2_behaviors/stop std_srvs/srv/Trigger '{}'
+ros2 topic echo /go2_behaviors/status
+```
+
+## Unitree 接口兼容
+
+`gazebo.launch.py` 和 `gazebo_velodyne.launch.py` 默认以
+`unitree_bridge:=true` 启动兼容层。桥接发布 `/sportmodestate`、
+`/lf/sportmodestate`、`/lowstate`、`/lf/lowstate`，并处理
+`/api/sport/request`。支持 Move、Euler、站立/坐卧/恢复和现有 Hello、Stretch、
+Dance1 动作；Move 生效时不得并行键盘遥控。
+
+接口定义固定来自 Unitree 官方 `unitree_ros2 v0.3.0`，来源和许可证见
+[`unitree_ros2_interfaces/README.md`](src/unitree_ros2_interfaces/README.md)；
+字段映射、错误码及未模拟边界见
+[`go2_unitree_sim_bridge/README.md`](src/go2_unitree_sim_bridge/README.md)。关闭桥接：
+
+```bash
+ros2 launch go2_config gazebo_velodyne.launch.py unitree_bridge:=false
+```
+
+真机只加载 `source scripts/setup_unitree_real.bash <网卡名>`，不得启动本仿真桥。
 
 ## 地图与重定位
 

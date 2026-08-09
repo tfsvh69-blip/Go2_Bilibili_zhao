@@ -23,6 +23,8 @@
 
 - `simdog/src/unitree-go2-ros2/`：Go2 模型、CHAMP 四足步态、`ros2_control`、Gazebo 世界和机器人配置。
 - `simdog/src/go2_behaviors/`：复用标准关节轨迹接口实现的打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
+- `simdog/src/go2_unitree_sim_bridge/`：把 Gazebo/CHAMP 映射为 Unitree Sport API 消息、话题和受支持请求。
+- `simdog/src/unitree_ros2_interfaces/`：固定的 Unitree 官方 `unitree_ros2 v0.3.0` `unitree_go`、`unitree_api` 接口快照。
 - `simdog/src/LIO-SAM/`：Velodyne 与 IMU 融合建图。
 - `simdog/src/ndt_relocalization/`：基于 PCD 地图的 NDT 重定位 ROS 2 节点。
 - `simdog/src/fast_gicp/`：CUDA NDT 点云配准后端。
@@ -49,6 +51,8 @@ bash scripts/build_workspaces.sh
 source scripts/setup_simdog.bash
 ```
 
+Unitree 接口仿真使用 `source scripts/setup_unitree_sim.bash`，默认配置 CycloneDDS、`lo` 和 Domain 1；真机只使用 `source scripts/setup_unitree_real.bash <网卡名>`，默认 Domain 0，且不得启动仿真 bridge。
+
 `scripts/build_workspaces.sh` 当前只构建 `simdog`。检测到 `/usr/local/cuda-12.8/bin/nvcc` 时，会为 `fast_gicp` 和 `ndt_relocalization` 构建 `sm_89` CUDA 后端；否则构建 OpenMP CPU 回退版本。
 
 修改 xacro、Python 启动文件或通过 `--symlink-install` 链接的资源后，通常可直接重启相应节点。修改 C++、CUDA、消息、服务或 CMake 配置后，应执行：
@@ -69,6 +73,8 @@ ros2 launch lio_sam lidar.launch.py rviz:=true
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ros2 run go2_behaviors go2_behavior hello
 ```
+
+主 Gazebo 启动文件默认 `unitree_bridge:=true`，同时启动行为服务端和 Unitree 兼容桥；不需要兼容层时显式传入 `unitree_bridge:=false`。Unitree `Move` 活动期间不得并行运行键盘遥控。
 
 桌面环境可执行 `bash simdog/start.sh`，依次启动无界面 Gazebo、LIO-SAM、键盘遥控，并在找到 PCD 地图时启动 NDT。默认地图为 `~/go2_maps/latest/GlobalMap.pcd`；没有地图时必须跳过 NDT。建图完成后使用 `bash simdog/save_Map.sh` 保存地图。
 
@@ -97,9 +103,11 @@ Gazebo Classic 图形界面可能受 NVIDIA 驱动与 OGRE 兼容性影响，默
 ```bash
 ros2 topic hz /velodyne_points
 ros2 topic hz /imu/data
-ros2 topic echo --once /odom/local
+ros2 topic echo --once /odom
 ros2 topic hz /joint_states
 ros2 control list_controllers
+ros2 topic hz /sportmodestate
+ros2 topic hz /lowstate
 ```
 
 传感器或控制改动还应验证 `/clock`、`/cmd_vel` 和 TF。GPU NDT 改动必须执行：
@@ -117,14 +125,15 @@ bash scripts/verify_gpu_runtime.sh
 - Velodyne 使用 `gpu_ray`；改回高分辨率 CPU `ray` 会显著降低 Gazebo 实时率。
 - 当前已验证遥控、四足步态、传感器、LIO-SAM 建图、地图保存和 NDT 重定位。
 - 仿真动作通过 `FollowJointTrajectory` 控制当前 Gazebo 模型，不等同于真机固件中的 Unitree Sport API，不可直接下发真机。
+- Unitree 兼容桥只保证已列出的消息、话题与请求的接口级兼容，不实现 `/lowcmd`、无线遥控、BMS、真实足底力、障碍距离或真机固件行为；真机环境入口尚未经过硬件验证。
 - Nav2 和 SLAM Toolbox 依赖已安装，但 Go2 的完整自主导航参数尚未完成调优，不能视为开箱即用。
 - LIO-SAM 当前关闭回环检测；正式地图需要在目标场景重新采集并评估质量。
 - NDT 使用前必须提供有效 `GlobalMap.pcd`，并通过 `/initialpose` 给出合理初始位姿。
-- 根目录没有可用 Git 元数据，删除或覆盖文件前必须特别确认范围和恢复方式。
+- 根目录已配置 Git，默认分支为 `main`，远端为 `origin`；提交前仍须核对工作区，避免混入用户的无关修改。
 
 ## 提交与合并请求
 
-该目录没有可用 Git 元数据，因此无法从提交历史归纳规范。后续提交使用简短祈使句和范围，例如 `go2_config: 调整雷达坐标系`，每次提交只处理一个主题。合并请求应说明受影响包、构建与启动验证结果、修改的 ROS 话题或坐标系；涉及可视化时附 RViz 或 Gazebo 截图。
+提交使用简短中文祈使句和范围，例如 `go2_config: 调整雷达坐标系`，每次提交只处理一个主题。推送前执行 `git status --short` 和与改动风险相称的验证。合并请求应说明受影响包、构建与启动验证结果、修改的 ROS 话题或坐标系；涉及可视化时附 RViz 或 Gazebo 截图。
 
 ## 项目记忆维护
 
