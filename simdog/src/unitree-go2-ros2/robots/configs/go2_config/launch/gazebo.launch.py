@@ -11,7 +11,10 @@ from launch.actions import (
     IncludeLaunchDescription,
 )
 from launch.conditions import IfCondition
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import (
+    AnyLaunchDescriptionSource,
+    PythonLaunchDescriptionSource,
+)
 from launch.substitutions import Command, LaunchConfiguration
 
 
@@ -49,6 +52,11 @@ def generate_launch_description():
     )
     declare_lite = DeclareLaunchArgument(
         "lite", default_value="false", description="Lite"
+    )
+    declare_unitree_bridge = DeclareLaunchArgument(
+        "unitree_bridge",
+        default_value="true",
+        description="Launch Unitree ROS 2 compatibility bridge",
     )
     declare_ros_control_file = DeclareLaunchArgument(
         "ros_control_file",
@@ -117,12 +125,25 @@ def generate_launch_description():
         }.items(),
     )
 
+    unitree_bridge_ld = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory("go2_unitree_sim_bridge"),
+                "launch",
+                "unitree_sim_bridge.launch.xml",
+            )
+        ),
+        condition=IfCondition(LaunchConfiguration("unitree_bridge")),
+        launch_arguments={"use_sim_time": use_sim_time}.items(),
+    )
+
     return LaunchDescription(
         [
             declare_use_sim_time,
             declare_rviz,
             declare_robot_name,
             declare_lite,
+            declare_unitree_bridge,
             declare_ros_control_file,
             declare_gazebo_world,
             declare_gui,
@@ -131,7 +152,8 @@ def generate_launch_description():
             declare_world_init_z,
             declare_world_init_heading,
             bringup_ld,
-            gazebo_ld
+            gazebo_ld,
+            unitree_bridge_ld,
 
         ]
     )

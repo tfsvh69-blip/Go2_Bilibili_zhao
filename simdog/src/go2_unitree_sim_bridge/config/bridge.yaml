@@ -1,0 +1,20 @@
+/**:
+  ros__parameters:
+    use_sim_time: true
+    odom_topic: /odom/ground_truth
+    imu_topic: /imu/data
+    joint_states_topic: /joint_states
+    foot_contacts_topic: /foot_contacts
+    base_frame: base_link
+    source_timeout: 1.0
+    sport_rate: 50.0
+    sport_lf_rate: 10.0
+    low_rate: 100.0
+    low_lf_rate: 10.0
+    foot_raise_height: 0.04
+    max_velocity_x: 0.3
+    max_velocity_y: 0.25
+    max_yaw_speed: 0.5
+    max_roll: 0.35
+    max_pitch: 0.35
+    max_body_yaw: 0.5

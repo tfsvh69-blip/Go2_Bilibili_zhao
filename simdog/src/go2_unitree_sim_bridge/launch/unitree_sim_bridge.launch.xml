@@ -1,0 +1,15 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="params_file" default="$(find-pkg-share go2_unitree_sim_bridge)/config/bridge.yaml"/>
+
+  <node pkg="go2_behaviors" exec="go2_behavior_server"
+        name="go2_behavior_server" output="screen">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <node pkg="go2_unitree_sim_bridge" exec="unitree_sim_bridge"
+        name="go2_unitree_sim_bridge" output="screen">
+    <param from="$(var params_file)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+</launch>

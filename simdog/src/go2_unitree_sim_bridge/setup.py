@@ -1,7 +1,8 @@
+from glob import glob
 from setuptools import find_packages, setup
 
 
-package_name = "go2_behaviors"
+package_name = "go2_unitree_sim_bridge"
 
 setup(
     name=package_name,
@@ -10,17 +11,18 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml", "README.md"]),
+        ("share/" + package_name + "/launch", glob("launch/*")),
+        ("share/" + package_name + "/config", glob("config/*")),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="hao",
     maintainer_email="hao@example.com",
-    description="基于 ros2_control 标准关节轨迹接口的 Go2 仿真动作。",
+    description="Gazebo/CHAMP 到 Unitree Go2 ROS 2 Sport API 的兼容桥。",
     license="BSD-3-Clause",
     entry_points={
         "console_scripts": [
-            "go2_behavior = go2_behaviors.behavior_runner:main",
-            "go2_behavior_server = go2_behaviors.behavior_server:main",
+            "unitree_sim_bridge = go2_unitree_sim_bridge.bridge:main",
         ],
     },
 )

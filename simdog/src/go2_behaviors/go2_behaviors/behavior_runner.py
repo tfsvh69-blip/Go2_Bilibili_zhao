@@ -18,6 +18,7 @@ from nav_msgs.msg import Odometry
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
 from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectoryPoint
 
@@ -271,7 +272,8 @@ def validate_behaviors() -> None:
                 lower, upper = JOINT_LIMITS[joint_name]
                 if not math.isfinite(value) or not lower <= value <= upper:
                     raise ValueError(
-                        f"{behavior_name} 的 {joint_name}={value} 超出 [{lower}, {upper}]"
+                        f"{behavior_name} 的 {joint_name}={value} "
+                        f"超出 [{lower}, {upper}]"
                     )
 
 
@@ -301,6 +303,23 @@ class BehaviorRunner(Node):
         )
         self.mode_acquired = False
         self.keep_mode_on_exit = False
+        self.cancel_requested = False
+        self._goal_handle = None
+        self._status_publisher = self.create_publisher(
+            String, "/go2_behaviors/status", 10
+        )
+
+    def publish_status(self, status: str) -> None:
+        """发布供兼容桥和命令行观察的动作状态。"""
+        message = String()
+        message.data = status
+        self._status_publisher.publish(message)
+
+    def request_cancel(self) -> None:
+        """请求取消当前轨迹；由执行循环负责恢复 CHAMP 控制权。"""
+        self.cancel_requested = True
+        if self._goal_handle is not None:
+            self._goal_handle.cancel_goal_async()
 
     def _joint_state_callback(self, message: JointState) -> None:
         self._joint_positions.update(zip(message.name, message.position))
@@ -313,7 +332,9 @@ class BehaviorRunner(Node):
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
             if all(name in self._joint_positions for name in JOINT_NAMES):
-                return {name: self._joint_positions[name] for name in JOINT_NAMES}
+                return {
+                    name: self._joint_positions[name] for name in JOINT_NAMES
+                }
         raise RuntimeError("未收到包含 12 个腿部关节的 /joint_states")
 
     def set_behavior_mode(self, enabled: bool) -> None:
@@ -351,7 +372,9 @@ class BehaviorRunner(Node):
         pitch = math.asin(max(-1.0, min(1.0, pitch_term)))
 
         expected_height = (
-            0.06 <= position.z <= 0.14 if behavior == "lie" else position.z >= 0.16
+            0.06 <= position.z <= 0.14
+            if behavior == "lie"
+            else position.z >= 0.16
         )
         if not expected_height or abs(roll) > 0.35 or abs(pitch) > 0.35:
             raise RuntimeError(
@@ -373,6 +396,8 @@ class BehaviorRunner(Node):
         return Duration(sec=whole_seconds, nanosec=nanoseconds)
 
     def execute(self, behavior: str) -> None:
+        self.cancel_requested = False
+        self.publish_status(f"running:{behavior}")
         initial_pose = self._wait_for_joint_state()
         self.set_behavior_mode(True)
 
@@ -411,6 +436,7 @@ class BehaviorRunner(Node):
         goal_handle = send_future.result() if send_future.done() else None
         if goal_handle is None or not goal_handle.accepted:
             raise RuntimeError("关节轨迹控制器拒绝了动作目标")
+        self._goal_handle = goal_handle
 
         result_future = goal_handle.get_result_async()
         # 高负载传感器仿真的实时率可能只有 0.2 左右，等待时间必须按仿真时长放大。
@@ -422,6 +448,8 @@ class BehaviorRunner(Node):
             raise RuntimeError("等待动作完成超时")
 
         result = result_future.result().result
+        if self.cancel_requested:
+            raise RuntimeError("动作已取消")
         if result.error_code != FollowJointTrajectory.Result.SUCCESSFUL:
             raise RuntimeError(
                 f"动作执行失败，错误码 {result.error_code}：{result.error_string}"
@@ -438,6 +466,8 @@ class BehaviorRunner(Node):
         else:
             self.set_behavior_mode(False)
             self.get_logger().info(f"“{CHINESE_NAMES[behavior]}”执行完成")
+        self.publish_status("idle")
+        self._goal_handle = None
 
 
 def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:

@@ -55,8 +55,10 @@ apt-get install -y \
     ros-humble-pcl-msgs \
     ros-humble-perception-pcl \
     ros-humble-robot-localization \
+    ros-humble-rmw-cyclonedds-cpp \
     ros-humble-ros2-control \
     ros-humble-ros2-controllers \
+    ros-humble-rosidl-generator-dds-idl \
     ros-humble-rviz2 \
     ros-humble-slam-toolbox \
     ros-humble-teleop-twist-keyboard \

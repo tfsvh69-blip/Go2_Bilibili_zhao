@@ -3,8 +3,8 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-ros_setup="/opt/ros/humble/setup.bash"
 workspace_setup="${script_dir}/install/setup.bash"
+unitree_setup="${script_dir}/../scripts/setup_unitree_sim.bash"
 wait_time="${WAIT_TIME:-8}"
 map_path="${1:-${HOME}/go2_maps/latest/GlobalMap.pcd}"
 gpu_device="${GO2_GPU_DEVICE:-0}"
@@ -20,10 +20,9 @@ if ! command -v gnome-terminal >/dev/null 2>&1; then
     exit 1
 fi
 
-printf -v ros_setup_q '%q' "${ros_setup}"
-printf -v workspace_setup_q '%q' "${workspace_setup}"
+printf -v unitree_setup_q '%q' "${unitree_setup}"
 printf -v map_path_q '%q' "${map_path}"
-common_setup="source ${ros_setup_q} && source ${workspace_setup_q}"
+common_setup="source ${unitree_setup_q}"
 if command -v nvidia-smi >/dev/null 2>&1 &&
     [[ -x /usr/local/cuda-12.8/bin/nvcc ]]; then
     printf -v gpu_device_q '%q' "${gpu_device}"
