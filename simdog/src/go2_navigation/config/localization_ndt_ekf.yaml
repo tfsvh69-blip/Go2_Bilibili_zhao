@@ -1,0 +1,41 @@
+# NDT 实验档的二维全局融合器。
+#
+# NDT 只输出 map 坐标系下的 /pcl_pose；robot_localization 复用连续 /odom
+# 速度并在 two_d_mode 下唯一发布平面的 map -> odom，避免四足机身的 z/roll/pitch
+# 抖动进入 Nav2 全局 TF。
+ndt_global_ekf:
+  ros__parameters:
+    use_sim_time: true
+    frequency: 20.0
+    sensor_timeout: 0.5
+    two_d_mode: true
+    transform_time_offset: 0.0
+    transform_timeout: 0.2
+    print_diagnostics: true
+    publish_tf: true
+    publish_acceleration: false
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_footprint
+    world_frame: map
+
+    odom0: /odom
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 5
+
+    pose0: /pcl_pose
+    pose0_config: [true,  true,  false,
+                   false, false, true,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    pose0_differential: false
+    pose0_relative: false
+    pose0_queue_size: 3
+    pose0_rejection_threshold: 2.0

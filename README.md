@@ -5,6 +5,9 @@
 `ros2_control` 驱动 12 个腿部关节，不使用焊死腿关节或 planar-move 滑行的
 简化模型。
 
+初次接触 ROS 2、RViz、建图或导航时，先阅读
+[《Go2 导航、建图与 RViz 初学者图解手册》](文档/Go2导航建图与RViz初学者图解手册.md)。其中用本项目真实截图解释地图颜色、黄色/紫色协方差、TF、AMCL、Nav2 状态、代价地图和速度安全链。
+
 主要能力：
 
 - Unitree Go2 URDF/xacro、Gazebo 物理仿真和 CHAMP 四足步态。
@@ -37,6 +40,8 @@ GPU NDT 架构：sm_89
 ├── simdog/                         # 唯一 ROS 2 colcon 工作空间
 │   ├── src/
 │   │   ├── go2_behaviors/          # 打招呼、点头、伸展等仿真动作
+│   │   ├── go2_navigation/         # 自主导航包（同源地图包、Nav2、安全链）
+│   │   ├── lidar_localization_ros2/ # NDT/GICP 实验定位库
 │   │   ├── go2_unitree_sim_bridge/ # Unitree Sport API 仿真兼容桥
 │   │   ├── unitree_ros2_interfaces/ # 固定的官方 v0.3.0 消息接口
 │   │   ├── unitree-go2-ros2/       # Go2、CHAMP、ros2_control、Gazebo
@@ -53,13 +58,15 @@ GPU NDT 架构：sm_89
 │   ├── install_gpu_dependencies.sh
 │   ├── build_workspaces.sh         # 当前只构建 simdog
 │   ├── setup_simdog.bash
-│   ├── setup_unitree_sim.bash      # CycloneDDS/lo/Domain 1
+│   ├── setup_unitree_sim.bash      # CycloneDDS/lo/Domain 0
 │   ├── setup_unitree_real.bash     # CycloneDDS/真机网卡/Domain 0
 │   └── verify_gpu_runtime.sh
 ├── AGENTS.md                       # 协作规则
 ├── CLAUDE.md                       # 与 AGENTS.md 完全一致
 ├── GPU_TESTING.md                  # GPU 验证与维护
-└── PROJECT_MEMORY.md               # 当前状态与阶段记录
+├── PROJECT_MEMORY.md               # 当前状态与阶段记录
+└── 文档/Go2导航建图与RViz初学者图解手册.md
+                                    # 初学者术语、RViz 图例与故障现象索引
 ```
 
 ## 首次配置
@@ -98,9 +105,9 @@ Render Offload。可通过 `GO2_GPU_DEVICE` 选择物理 GPU，通过
 source scripts/setup_unitree_sim.bash
 ```
 
-该入口使用 CycloneDDS、回环接口 `lo` 和默认 `ROS_DOMAIN_ID=1`。已有
-`ROS_DOMAIN_ID` 或 `GO2_UNITREE_SIM_DOMAIN_ID` 可覆盖默认值。真机只配置通信
-环境，不启动仿真桥；必须显式传入已连接且处于 UP 状态的网卡：
+该入口使用 CycloneDDS、回环接口 `lo` 和固定的 `ROS_DOMAIN_ID=0`，不会继承
+终端中遗留的域。隔离测试只能通过 `GO2_UNITREE_SIM_DOMAIN_ID=<id>` 显式覆盖。
+真机只配置通信环境，不启动仿真桥；必须显式传入已连接且处于 UP 状态的网卡：
 
 ```bash
 source scripts/setup_unitree_real.bash enp3s0
@@ -170,7 +177,7 @@ bash simdog/save_Map.sh "$HOME/go2_maps/warehouse" 0.2
 ```bash
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
-ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
+ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true
 ```
 
 终端二：启动 LIO-SAM，但让出 `map -> odom`。
@@ -330,6 +337,121 @@ ros2 launch ndt_relocalization ndt_localization.launch.py \
 `/velodyne_points`，发布 `/global_map`、`/ndt_pose`、`/ndt_odom` 和
 `map -> odom` TF。
 
+## 自主导航
+
+统一入口默认运行 `online_slam`：Slam Toolbox 一边定位一边扩展 `/map`。固定图模式
+默认运行 AMCL；`lidar_ndt` 和 `ndt_cuda` 保留为实验档。NDT 实验需要**同源地图包**：
+
+| 文件 | 用途 |
+|---|---|
+| `GlobalMap.pcd` | NDT/GICP 定位地图 |
+| `map.yaml` / `map.pgm` | Nav2 全局代价地图 |
+| `map_bundle.yaml` | SHA-256 完整性清单，缺失或不匹配时拒绝启动 |
+
+```bash
+# 建图并生成同源地图包
+ros2 launch go2_navigation mapping.launch.xml
+bash simdog/src/go2_navigation/scripts/save_map.sh ~/go2_maps/latest
+
+# 只由已有 GlobalMap.pcd 重建地图包（支持裁剪到导航区域）
+ros2 run go2_navigation build_map_bundle --map-dir ~/go2_maps/latest \
+    --x-min -2 --x-max 8 --y-min -4 --y-max 4
+
+# 默认：在线 SLAM + 导航，从空图开始；map_session 可传已有会话目录续建。
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=online_slam map_session:=new \
+    controller_profile:=forward_rpp rviz:=true
+
+# 固定地图 + AMCL（静态 /map 不会继续扩展）
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=static_map map_dir:=$HOME/go2_maps/online/latest \
+    localization:=amcl controller_profile:=forward_rpp rviz:=true \
+    tuning_gui:=true
+
+# 健康检查
+ros2 run go2_navigation health_check --mode online_slam --localization amcl
+```
+
+一次只运行一套 `simulation_navigation.launch.xml`。在线 RViz 的主面板是
+`Slam Toolbox`，用于观察、暂停与保存在线图；`Navigation 2` 面板用于发送、取消目标。
+固定图 RViz 的 `Static Map` 显示 `/map`，`AMCL Pose` 显示 `/amcl_pose`。两种配置都将
+原始点云和两张代价图默认关闭，排障时再打开。固定图启动后先在白色自由区点击
+`2D Pose Estimate`，待 `Localization: active` 后再点 `Nav2 Goal`。不要将 Fixed Frame
+改成 `odom`。
+
+`AMCL Pose` 的紫色椭圆是 x/y 协方差，黄色扇形是 yaw 协方差，不是雷达视野。扇形
+无限拉长表示 AMCL 航向失信；导航安全监督会锁速并提示当前标准差，防止错误的
+`map -> odom` 继续驱动机器人。重新定位前先停止目标，再准确设置位置和箭头朝向。
+
+默认规划/控制链为 `SmacPlanner2D → SmoothPath(SimpleSmoother) → RPP`
+（前向优先，`vx≤0.27 m/s`）。`forward_mppi` 是 DiffDrive 圆弧对照档，
+`omni_mppi` 保留原有全向对照档，两者均不是默认。RViz 中绿色
+`Raw Global Plan` 来自 `/plan`，蓝色 `Controller Path (Smoothed)` 来自
+`/received_global_plan`，可用来区分“原始路线”与“实际跟随路线”。
+
+`tuning_gui:=true` 会同时打开标准 `rqt_reconfigure` 窗口。只建议在
+`/controller_server` 中逐项调整 `desired_linear_vel`、lookahead、
+`rotate_to_heading_*`、`max_angular_accel`、`min_approach_linear_velocity` 与目标容差。
+运行时修改不会写回 YAML，重启即恢复安全基线；不得用该窗口关闭
+Collision Monitor、RPP 碰撞预测或安全监督。
+控制链为
+`Nav2/键盘/Unitree Move -> twist_mux -> velocity_smoother -> collision_monitor -> /cmd_vel -> CHAMP`。
+公开 action 仍是 `/navigate_to_pose`；联调默认只检查地图边界、自由栅格、0.10 m
+最小余量与定位健康，非法目标在接触规划器前被拒绝。内部 Nav2 action 为
+`/navigate_to_pose_raw`。行为动作、趴下状态、定位失效或关键节点掉线时安全监督
+发布 `/pause_navigation` 锁住输入并输出零速度；`/cmd_vel` 的唯一发布者应为
+`collision_monitor`。
+
+统一 Gazebo 导航入口会关闭误差较大的 CHAMP 足端平面里程计，改由
+`go2_simulation_odom` 把 `/odom/ground_truth` 的首帧设为 `odom` 原点。机器人仍由
+CHAMP 四足步态和 Gazebo 物理实际运动；该真值反馈只用于仿真控制闭环，真机不适用。
+
+固定地图的 `/map` 由 `map_server` 从 PGM 读取，本来就不会随机器人移动扩展。
+在线模式使用 `pointcloud_to_laserscan + slam_toolbox`，RViz 中的 `Live SLAM Map`
+会随观测扩大；结束时使用：
+
+```bash
+bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+```
+
+该脚本保存的 `map.yaml/map.pgm` 可直接作为固定 AMCL 地图；AMCL 不要求三维 PCD。
+脚本还会让 `~/go2_maps/online/latest` 指向最近保存的在线会话。它与
+LIO-SAM/NDT 使用的 `~/go2_maps/latest` 不是同一目录；固定 AMCL 不应省略或写错
+`map_dir`。固定模式不会自动选择地图质量，实际来源必须这样核实：
+
+```bash
+ros2 param get /map_server yaml_filename
+ros2 lifecycle get /map_server                 # 期望 active [3]
+```
+
+若路径正确但 RViz 仍显示旧图，应关闭旧 RViz/导航进程后只启动一套入口；失活或退出的
+`map_server` 不再更新 `/map` 时，RViz 仍可能保留最后收到的画面。在线模式使用
+`map_session:=new` 会从空白 pose graph 开始，不会加载旧地图。
+
+LIO-SAM PCD 转栅格只保留给 NDT 同源地图实验，不建议作为默认 AMCL 地图，因为多高度
+点投影到同一二维格会产生伪障碍。固定 AMCL 示例：
+
+```bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=static_map localization:=amcl \
+    map_dir:=$HOME/go2_maps/online/learning_room rviz:=true
+```
+
+导航中普通取消点击 RViz `Navigation 2 -> Cancel`。卡住时使用：
+
+```bash
+ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
+ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
+```
+
+导航栈运行时，键盘遥控必须从安全链入口发布：
+
+```bash
+source scripts/setup_unitree_sim.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+    --ros-args -r cmd_vel:=/cmd_vel_teleop
+```
+
 ## TF 所有权
 
 主链必须保持为：
@@ -340,7 +462,9 @@ map -> odom -> base_footprint -> base_link -> 关节与传感器
 
 - 建图时由 LIO-SAM 发布动态 `map -> odom`；重定位时关闭该发布，由 NDT
   唯一发布。
-- `footprint_to_odom_ekf` 唯一发布动态 `odom -> base_footprint` 和 `/odom`。
+- 普通 CHAMP、建图与真机式启动由 `footprint_to_odom_ekf` 发布动态
+  `odom -> base_footprint` 和 `/odom`；两个统一 Gazebo 导航入口关闭它，改由
+  `go2_simulation_odom` 唯一发布，避免足端接触估计严重低估仿真位移。
 - `base_to_footprint_ekf` 根据 CHAMP 状态估计发布
   `base_footprint -> base_link`。
 - `robot_state_publisher` 发布 `base_link` 以下的关节和实际传感器 TF，包括
@@ -392,12 +516,13 @@ ros2 topic echo --once /ndt_pose
 
 ## 已知限制
 
-- Gazebo Classic GUI 可能受 NVIDIA 驱动与 OGRE 兼容性影响，默认推荐
-  `gui:=false` 配合 RViz2。
+- Gazebo Classic、导航与建图入口默认打开 GUI；自动化或性能测试可显式传入
+  `gui:=false`。GUI 仍可能受 NVIDIA 驱动与 OGRE 兼容性影响。
 - NVIDIA OpenGL 异常时，先设置 `GO2_FORCE_NVIDIA_RENDERING=0`；仍有问题再
   按需使用 `LIBGL_ALWAYS_SOFTWARE=1`。
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
-- Nav2 和 SLAM Toolbox 依赖已经安装，但 Go2 的完整自主导航参数尚未完成调优。
+- 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + RPP/MPPI 与安全链
+  已接通；在线模式已通过 12 次连续短目标。10 分钟压力、移动障碍和完整失效注入仍待完成。
 - NDT 正式使用前必须准备有效 `GlobalMap.pcd` 并设置合理初始位姿。
 - Unitree 兼容桥只保证所列消息、话题和请求的接口级兼容，不模拟 `/lowcmd`、
   BMS、无线遥控、真实足底力、障碍距离或真机固件的平衡与安全策略。

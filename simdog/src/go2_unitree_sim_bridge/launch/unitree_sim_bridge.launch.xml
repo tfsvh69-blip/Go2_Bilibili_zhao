@@ -1,6 +1,8 @@
 <launch>
   <arg name="use_sim_time" default="true"/>
   <arg name="params_file" default="$(find-pkg-share go2_unitree_sim_bridge)/config/bridge.yaml"/>
+  <arg name="cmd_vel_topic" default="/cmd_vel"
+       description="速度输出话题；导航模式下应设为 /cmd_vel_unitree 经 twist_mux 接入安全链"/>
 
   <node pkg="go2_behaviors" exec="go2_behavior_server"
         name="go2_behavior_server" output="screen">
@@ -11,5 +13,6 @@
         name="go2_unitree_sim_bridge" output="screen">
     <param from="$(var params_file)"/>
     <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="cmd_vel_topic" value="$(var cmd_vel_topic)"/>
   </node>
 </launch>

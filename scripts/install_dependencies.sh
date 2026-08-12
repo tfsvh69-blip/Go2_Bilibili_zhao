@@ -40,6 +40,7 @@ apt-get install -y \
     libgtsam-dev \
     libgtsam-unstable-dev \
     python3-colcon-common-extensions \
+    python3-open3d \
     python3-rosdep \
     ros-humble-camera-info-manager \
     ros-humble-control-msgs \
@@ -56,12 +57,15 @@ apt-get install -y \
     ros-humble-perception-pcl \
     ros-humble-robot-localization \
     ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-rqt-gui \
+    ros-humble-rqt-reconfigure \
     ros-humble-ros2-control \
     ros-humble-ros2-controllers \
     ros-humble-rosidl-generator-dds-idl \
     ros-humble-rviz2 \
     ros-humble-slam-toolbox \
     ros-humble-teleop-twist-keyboard \
+    ros-humble-twist-mux \
     ros-humble-velodyne \
     ros-humble-velodyne-description \
     ros-humble-velodyne-gazebo-plugins \

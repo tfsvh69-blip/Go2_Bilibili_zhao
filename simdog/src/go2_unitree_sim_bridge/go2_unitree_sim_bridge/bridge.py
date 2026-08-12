@@ -15,7 +15,6 @@ from geometry_msgs.msg import Pose, Twist
 from nav_msgs.msg import Odometry
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.clock import Clock, ClockType
-from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from rclpy.time import Time
@@ -182,6 +181,9 @@ class UnitreeSimBridge(Node):
             "imu_topic": "/imu/data",
             "joint_states_topic": "/joint_states",
             "foot_contacts_topic": "/foot_contacts",
+            # 速度输出话题：非导航默认 /cmd_vel；导航模式下应设为 /cmd_vel_unitree
+            # 经 twist_mux 接入安全控制链，避免与 collision_monitor 冲突。
+            "cmd_vel_topic": "/cmd_vel",
             "base_frame": "base_link",
             "source_timeout": 1.0,
             "sport_rate": 50.0,
@@ -214,7 +216,7 @@ class UnitreeSimBridge(Node):
             Response, "/api/sport/response", 10
         )
         self._cmd_vel_publisher = self.create_publisher(
-            Twist, "/cmd_vel", 10
+            Twist, self.get_parameter("cmd_vel_topic").value, 10
         )
         self._body_pose_publisher = self.create_publisher(
             Pose, "/body_pose", 10
@@ -748,10 +750,12 @@ class UnitreeSimBridge(Node):
 def main() -> None:
     rclpy.init()
     bridge = UnitreeSimBridge()
-    executor = MultiThreadedExecutor(num_threads=4)
-    executor.add_node(bridge)
     try:
-        executor.spin()
+        # 回调均短小且已有内部锁。Humble rclpy/CycloneDDS 的 waitable 在当前
+        # lo 配置下可能空转；5 ms 退让保留 200 Hz 上限，高于最高 100 Hz 状态发布。
+        while rclpy.ok():
+            rclpy.spin_once(bridge, timeout_sec=0.02)
+            time.sleep(0.005)
     except KeyboardInterrupt:
         pass
     finally:
@@ -759,7 +763,6 @@ def main() -> None:
             with bridge._lock:
                 bridge._move_active = False
                 bridge._publish_zero_velocity()
-        executor.shutdown()
         bridge.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

@@ -1,0 +1,82 @@
+# Go2 前向 DiffDrive MPPI 对照档。
+#
+# 用于对比 RPP 与预测控制器的连续圆弧效果，不替代默认
+# forward_rpp。采样规模按当前 10 Hz 控制频率限制，常态关闭轨迹可视化。
+controller_server:
+  ros__parameters:
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 40
+      model_dt: 0.10
+      batch_size: 800
+      vx_std: 0.10
+      vy_std: 0.0
+      wz_std: 0.20
+      vx_max: 0.27
+      vx_min: 0.0
+      vy_max: 0.0
+      wz_max: 0.40
+      motion_model: "DiffDrive"
+      iteration_count: 1
+      temperature: 0.3
+      gamma: 0.015
+      visualize: false
+      transform_tolerance: 0.2
+      critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic",
+                "ObstaclesCritic", "PathAlignCritic", "PathFollowCritic",
+                "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.5
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.5
+        critical_weight: 20.0
+        consider_footprint: true
+        collision_cost: 100000.0
+        collision_margin_distance: 0.10
+        near_goal_distance: 1.0
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.5
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+
+velocity_smoother:
+  ros__parameters:
+    max_velocity: [0.27, 0.0, 0.40]
+    min_velocity: [0.0, 0.0, -0.40]

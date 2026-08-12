@@ -5,6 +5,7 @@
     imu_topic: /imu/data
     joint_states_topic: /joint_states
     foot_contacts_topic: /foot_contacts
+    cmd_vel_topic: /cmd_vel
     base_frame: base_link
     source_timeout: 1.0
     sport_rate: 50.0

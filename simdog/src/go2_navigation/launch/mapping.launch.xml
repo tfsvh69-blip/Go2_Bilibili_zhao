@@ -1,0 +1,22 @@
+<launch>
+  <!-- Go2 建图入口：Gazebo 仿真 + LIO-SAM 建图（LIO-SAM 拥有 map->odom）。
+       建图完成后执行 save_map.sh 保存 PCD 并生成同源地图包。 -->
+  <arg name="use_sim_time" default="true"/>
+  <arg name="world" default="$(find-pkg-share go2_config)/worlds/my.world"/>
+  <arg name="gui" default="true"/>
+  <arg name="unitree_bridge" default="false"/>
+  <arg name="rviz" default="true"/>
+
+  <include file="$(find-pkg-share go2_config)/launch/gazebo_velodyne.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="world" value="$(var world)"/>
+    <arg name="gui" value="$(var gui)"/>
+    <arg name="unitree_bridge" value="$(var unitree_bridge)"/>
+  </include>
+
+  <include file="$(find-pkg-share lio_sam)/launch/lidar.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="publish_map_to_odom" value="true"/>
+    <arg name="rviz" value="$(var rviz)"/>
+  </include>
+</launch>

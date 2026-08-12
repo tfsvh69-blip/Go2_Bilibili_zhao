@@ -1,0 +1,94 @@
+# lidar_localization_ros2 定位器参数（Go2 + VLP-16 室内场景）
+#
+# 派生自上游 param/mid360_legged.yaml（四足预设），并按本项目适配：
+# - 输入为 /velodyne_points（10 Hz VLP-16）与 /odom（CHAMP EKF 输出）；
+# - 阶段一不启用 IMU 预积分，位置/速度预测仅依赖 /odom；
+# - 直接 TF 输出关闭，由 two_d_mode EKF 唯一发布平面 map -> odom。
+# map_path 在启动时经 launch 参数覆盖为 <map_dir>/GlobalMap.pcd。
+/**:
+  ros__parameters:
+    # ---- 配准后端与阈值 ----
+    registration_method: NDT_OMP
+    score_threshold: 6.0
+    ndt_resolution: 1.0
+    ndt_step_size: 0.1
+    ndt_num_threads: 4
+    ndt_max_iterations: 30
+    gicp_corr_randomness: 20
+    gicp_max_correspondence_distance: 2.0
+    vgicp_voxel_resolution: 1.0
+    transform_epsilon: 0.01
+
+    # ---- 输入点云 ----
+    voxel_leaf_size: 0.2
+    enable_scan_voxel_filter: true
+    scan_max_range: 30.0
+    scan_min_range: 1.0
+    scan_period: 0.1
+    cloud_queue_depth: 1
+    min_scan_interval_sec: 0.0
+
+    # ---- 地图与初始位姿 ----
+    use_pcd_map: true
+    map_path: ""          # 启动时由 launch 覆盖
+    set_initial_pose: false  # 不静默假设原点，等待 /initialpose
+    initial_pose_x: 0.0
+    initial_pose_y: 0.0
+    initial_pose_z: 0.0
+    initial_pose_qx: 0.0
+    initial_pose_qy: 0.0
+    initial_pose_qz: 0.0
+    initial_pose_qw: 1.0
+
+    # ---- 运动预测：/odom + TF（阶段一不用 IMU 预积分）----
+    use_odom: true
+    use_odom_tf_prediction: true
+    use_twist_prediction: false
+    twist_prediction_use_angular_velocity: false
+    max_twist_prediction_dt: 0.25
+    use_twist_ekf: false
+    use_gtsam_smoother: false
+    use_imu: false
+    use_imu_preintegration: false
+    imu_preintegration_use_base_frame_transform: true
+
+    # ---- 连续时间去畸变（默认关闭）----
+    use_continuous_time_deskew: false
+
+    # ---- 定位稳健性 ----
+    enable_debug: false
+    predict_pose_from_previous_delta: true
+    enable_local_map_crop: true
+    local_map_radius: 15.0
+    local_map_min_points: 50
+    reject_above_score_threshold: true
+    enable_borderline_seed_rejection_gate: true
+    borderline_seed_gate_score_threshold: 5.25
+    borderline_seed_gate_min_seed_translation_m: 0.8
+    enable_rejected_seed_update: false
+    enable_recovery_retry_from_last_pose: false
+
+    # ---- 重初始化请求（定位丢失信号）----
+    enable_reinitialization_request_output: true
+    enable_reinitialization_request_latch: true
+    reinitialization_trigger_threshold: 0.95
+    reinitialization_trigger_gap_scale_sec: 15.0
+    reinitialization_trigger_seed_translation_scale_m: 30.0
+    reinitialization_trigger_reject_streak_scale: 50.0
+    reinitialization_trigger_fitness_explosion_threshold: 1000.0
+    # 正常室内配准 fitness 约为 3.5；默认 1.0 会让已恢复的锁存永远无法清除。
+    # 复用现有 borderline gate 的 5.25，并要求连续 5 帧健康后解锁。
+    reinitialization_request_clear_ok_samples: 5
+    reinitialization_request_clear_max_fitness: 5.25
+    reinitialization_request_clear_max_correction_translation_m: 0.5
+
+    # ---- TF 与发布 ----
+    enable_map_odom_tf: false  # 由 two_d_mode robot_localization 唯一发布 map->odom
+    constrain_odom_tf_prediction_to_planar: true
+    global_frame_id: map
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    enable_timer_publishing: true
+    pose_publish_frequency: 20.0
+    viz_downsample: true
+    viz_voxel_leaf_size: 0.5

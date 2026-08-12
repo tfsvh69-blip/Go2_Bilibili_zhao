@@ -9,7 +9,9 @@
 
         <body_name>base_link</body_name>
         <frame_name>world</frame_name>
-        <update_rate>10.0</update_rate>
+        <!-- Nav2 控制频率为 20 Hz；真值里程计保持 50 Hz，避免控制器在
+             两个 10 Hz 样本之间反复请求“未来”TF。 -->
+        <update_rate>50.0</update_rate>
         <xyz_offset>0 0 0</xyz_offset>
         <rpy_offset>0 0 0</rpy_offset>
         <gaussian_noise>0.01</gaussian_noise>

@@ -58,6 +58,16 @@ def generate_launch_description():
         default_value="true",
         description="Launch Unitree ROS 2 compatibility bridge",
     )
+    declare_unitree_cmd_vel_topic = DeclareLaunchArgument(
+        "unitree_cmd_vel_topic",
+        default_value="/cmd_vel",
+        description="Unitree Move 速度输出；导航模式必须设为 /cmd_vel_unitree",
+    )
+    declare_publish_odom_tf = DeclareLaunchArgument(
+        "publish_odom_tf",
+        default_value="true",
+        description="启动 CHAMP 足端里程计及 odom TF；统一导航仿真会关闭并改用真值适配器",
+    )
     declare_ros_control_file = DeclareLaunchArgument(
         "ros_control_file",
         default_value=ros_control_config,
@@ -99,6 +109,7 @@ def generate_launch_description():
             "joint_controller_topic": "joint_group_effort_controller/joint_trajectory",
             "hardware_connected": "false",
             "publish_foot_contacts": "false",
+            "publish_odom_tf": LaunchConfiguration("publish_odom_tf"),
             "close_loop_odom": "true",
         }.items(),
     )
@@ -134,7 +145,10 @@ def generate_launch_description():
             )
         ),
         condition=IfCondition(LaunchConfiguration("unitree_bridge")),
-        launch_arguments={"use_sim_time": use_sim_time}.items(),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "cmd_vel_topic": LaunchConfiguration("unitree_cmd_vel_topic"),
+        }.items(),
     )
 
     return LaunchDescription(
@@ -145,6 +159,8 @@ def generate_launch_description():
             declare_robot_name,
             declare_lite,
             declare_unitree_bridge,
+            declare_unitree_cmd_vel_topic,
+            declare_publish_odom_tf,
             declare_ros_control_file,
             declare_gazebo_world,
             declare_gui,

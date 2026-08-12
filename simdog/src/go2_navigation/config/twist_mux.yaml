@@ -1,0 +1,32 @@
+# 速度命令多路复用（twist_mux 4.x）
+#
+# 优先级（数值越大越优先）：零速停车 > 导航锁 > 键盘 > Unitree Move > Nav2。
+# 每个输入带超时，超时后 twist_mux 使用 0.0 速度，避免陈旧命令失控。
+# 行为动作、趴下状态或定位失效时发布 /pause_navigation（std_msgs/Bool true），
+# 锁住优先级低于 200 的所有输入并输出零速度；恢复后发布 false 解锁。
+#
+# 输出话题：节点内部为 cmd_vel_out，由 launch 统一 remap 到 /cmd_vel_switched。
+twist_mux:
+  ros__parameters:
+    topics:
+      cmd_vel_nav:
+        topic: /cmd_vel_nav
+        timeout: 0.5
+        priority: 10
+      cmd_vel_unitree:
+        topic: /cmd_vel_unitree
+        timeout: 0.5
+        priority: 20
+      cmd_vel_teleop:
+        topic: /cmd_vel_teleop
+        timeout: 0.5
+        priority: 30
+      cmd_vel_stop:
+        topic: /cmd_vel_stop
+        timeout: 0.3
+        priority: 255
+    locks:
+      pause_navigation:
+        topic: /pause_navigation
+        timeout: 0.0
+        priority: 200

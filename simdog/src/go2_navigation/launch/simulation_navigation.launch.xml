@@ -1,0 +1,43 @@
+<launch>
+  <!-- 统一仿真导航入口。默认在线扩图；固定地图需显式 navigation_mode:=static_map。 -->
+  <arg name="map_dir" default="$(env HOME)/go2_maps/latest"/>
+  <arg name="map_session" default="new"/>
+  <arg name="navigation_mode" default="online_slam"/>
+  <arg name="localization" default="amcl"/>
+  <arg name="controller_profile" default="forward_rpp"/>
+  <arg name="gui" default="true"/>
+  <arg name="rviz" default="true"/>
+  <arg name="tuning_gui" default="false"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="minimum_goal_clearance_m" default="0.10"/>
+
+  <!-- 隔离 Gazebo 子启动文件的同名 rviz 参数，避免覆盖导航 RViz 开关。 -->
+  <group scoped="true">
+    <include file="$(find-pkg-share go2_config)/launch/gazebo_velodyne.launch.py">
+      <arg name="gui" value="$(var gui)"/>
+      <arg name="rviz" value="false"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+      <arg name="unitree_bridge" value="true"/>
+      <arg name="unitree_cmd_vel_topic" value="/cmd_vel_unitree"/>
+      <arg name="publish_odom_tf" value="false"/>
+    </include>
+  </group>
+
+  <!-- CHAMP 足端里程计在当前 Gazebo 接触模型中严重低估位移；仿真导航闭环
+       使用 Gazebo 真值，且仍保持真实四足步态与物理执行。 -->
+  <node pkg="go2_navigation" exec="simulation_odom" name="go2_simulation_odom" output="screen">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <include file="$(find-pkg-share go2_navigation)/launch/navigation.launch.py">
+    <arg name="map_dir" value="$(var map_dir)"/>
+    <arg name="map_session" value="$(var map_session)"/>
+    <arg name="localization" value="$(var localization)"/>
+    <arg name="navigation_mode" value="$(var navigation_mode)"/>
+    <arg name="controller_profile" value="$(var controller_profile)"/>
+    <arg name="rviz" value="$(var rviz)"/>
+    <arg name="tuning_gui" value="$(var tuning_gui)"/>
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="minimum_goal_clearance_m" value="$(var minimum_goal_clearance_m)"/>
+  </include>
+</launch>

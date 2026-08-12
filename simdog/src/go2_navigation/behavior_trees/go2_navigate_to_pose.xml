@@ -1,0 +1,49 @@
+<!--
+  Derived from Nav2 Humble navigate_to_pose_w_replanning_and_recovery.xml
+  (Apache-2.0). The only functional change is the explicit goal_checker_id.
+
+  Humble's FollowPath action leaves goal_checker_id empty when a behavior tree
+  does not provide it. With more than one configured goal checker, that empty
+  value makes controller_server abort before MPPI computes a command.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathToPose">
+            <Sequence name="ComputeAndOptionallySmoothPath">
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+              <!-- 平滑是质量增强而不是安全门禁：失败时 AlwaysSuccess
+                   保留 ComputePathToPose 写入的原路径继续执行。 -->
+              <Fallback name="UseRawPathWhenSmoothingFails">
+                <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
+                            smoother_id="simple_smoother"
+                            max_smoothing_duration="0.30"
+                            check_for_collisions="true"/>
+                <AlwaysSuccess/>
+              </Fallback>
+            </Sequence>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearingActions">
+            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </Sequence>
+          <Spin spin_dist="1.57"/>
+          <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.30" backup_speed="0.05"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

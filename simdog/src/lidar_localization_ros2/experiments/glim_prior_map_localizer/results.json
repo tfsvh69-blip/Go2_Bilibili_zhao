@@ -1,0 +1,323 @@
+{
+  "architecture": "continuous_glim_odom_with_smoothed_external_map_odom",
+  "date": "2026-07-19",
+  "docker_image": {
+    "id": "sha256:70d056317a475e8ce5a029e5b6d83d0b5e8f4e1587acd069d708eb00cd1b134a",
+    "tag": "lidarloc/glim-ros2:jazzy-v1.2.2-live-map-odom",
+    "02a_z_bridge_id": "sha256:5af587b79a4e9afe50f16f2397b6c78821c76603492cf1fba1fd408ea103ea32",
+    "02a_z_bridge_tag": "lidarloc/glim-ros2:jazzy-v1.2.2-live-map-odom-pending-z"
+  },
+  "fork_revisions": {
+    "glil_unofficial": "dd29667938cb56ef59de7f90290ad2dbc613f00c",
+    "glim_ros2": "cd4b2c9eb37a5c12c93d7339ce10167ebaa55288"
+  },
+  "policy": {
+    "coreset_size": 32,
+    "external_map_odom_time_constant_sec": 2.0,
+    "fixed_startup_rotation": true,
+    "normal_registration": "direct_vgicp",
+    "recovery_registration": "kiss_matcher_then_vgicp",
+    "translation_gain": 0.2,
+    "vertical_gain_default": "translation_gain",
+    "02a_z_bridge_vertical_gain": 1.0,
+    "pending_global_consensus_updates": "z_only"
+  },
+  "gate_summary": {
+    "passing_sequences": 4,
+    "total_sequences": 4,
+    "outdoor_hard_02a_passes": 2,
+    "outdoor_hard_02a_repeats": 4
+  },
+  "four_bag_vertical_gain_validation": {
+    "image_id": "sha256:a37681c646540d5ebab3037108495e8d6e2574dc53ad9b720278515d2582f821",
+    "vertical_gain": 1.0,
+    "default_enabled": false,
+    "decision": "Keep opt-in: every bag passed at least once, but outdoor_hard_01b passed only one of two repeats and non-planar drift remains unresolved.",
+    "runs": [
+      {
+        "id": "run22",
+        "sequence": "outdoor_hard_01a",
+        "ok": true,
+        "translation_ate_rmse_m": 1.1059563868093492,
+        "translation_end_error_m": 2.7380426690111515,
+        "rpe_translation_median_m": 0.15974521089054913,
+        "processing_p95_sec": 0.060261482
+      },
+      {
+        "id": "run23_repeat01",
+        "sequence": "outdoor_hard_01b",
+        "ok": false,
+        "failed_gates": [
+          "translation_ate"
+        ],
+        "translation_ate_rmse_m": 2.2192020897060774,
+        "translation_end_error_m": 2.4117412672055027,
+        "rpe_translation_median_m": 0.18280792674184734,
+        "processing_p95_sec": 0.078321586
+      },
+      {
+        "id": "run25_repeat02",
+        "sequence": "outdoor_hard_01b",
+        "ok": true,
+        "translation_ate_rmse_m": 1.8666354199732293,
+        "translation_end_error_m": 2.0215093971060494,
+        "rpe_translation_median_m": 0.1921255401376088,
+        "processing_p95_sec": 0.094137254
+      },
+      {
+        "id": "run20_repeat01",
+        "sequence": "outdoor_hard_02a",
+        "ok": true,
+        "translation_ate_rmse_m": 1.9261487862027733,
+        "translation_end_error_m": 2.853730416097297,
+        "rpe_translation_median_m": 0.1806983865230643,
+        "processing_p95_sec": 0.038549368
+      },
+      {
+        "id": "run21_repeat02",
+        "sequence": "outdoor_hard_02a",
+        "ok": true,
+        "translation_ate_rmse_m": 1.7946390730291173,
+        "translation_end_error_m": 2.8269908244298674,
+        "rpe_translation_median_m": 0.18096794788754772,
+        "processing_p95_sec": 0.030422028999999996
+      },
+      {
+        "id": "run24",
+        "sequence": "outdoor_hard_02b",
+        "ok": true,
+        "translation_ate_rmse_m": 1.0974642709448172,
+        "translation_end_error_m": 1.5378621361495903,
+        "rpe_translation_median_m": 0.17482914373973615,
+        "processing_p95_sec": 0.081358522
+      }
+    ],
+    "outdoor_hard_01b_cross_composition": {
+      "repeat01_raw_odom_with_baseline_anchor_ate_m": 2.2098280569472197,
+      "baseline_raw_odom_with_repeat01_anchor_ate_m": 1.562110968048621,
+      "conclusion": "The failed repeat was dominated by raw GLIM odometry variability; the Z-bridge anchor changed ATE by about 0.02 m."
+    }
+  },
+  "outdoor_hard_01b_determinism_validation": {
+    "configuration": {
+      "preprocess_num_threads": 1,
+      "odometry_num_threads": 1,
+      "vertical_gain": 1.0
+    },
+    "root_cause": "Parallel ordering in random-grid preprocessing and the odometry optimizer changed the selected points and raw trajectory from the first scan.",
+    "raw_odom_sha256": "45d49d87932febc06b4ab18b29fc1ba58fc6f6ed043a7157523fe4e75f383642",
+    "raw_odom_bitwise_equal": true,
+    "raw_odom_row_count": 2218,
+    "external_map_odom_max_abs_difference": 0.04288318210210029,
+    "runs": [
+      {
+        "id": "run30",
+        "ok": true,
+        "wall_duration_sec": 306.5948609469924,
+        "translation_ate_rmse_m": 1.407079521839094,
+        "translation_end_error_m": 1.957432058163616,
+        "rpe_translation_median_m": 0.18690045253726886,
+        "processing_p95_sec": 0.044286789,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      },
+      {
+        "id": "run31",
+        "ok": true,
+        "wall_duration_sec": 307.0096612229245,
+        "translation_ate_rmse_m": 1.4070793559048809,
+        "translation_end_error_m": 1.957432058163616,
+        "rpe_translation_median_m": 0.18694372463171008,
+        "processing_p95_sec": 0.047511732,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    ],
+    "decision": "Use the one-thread coreset profile for reproducible measurements; keep vertical gain opt-in pending other-bag and non-planar validation."
+  },
+  "runs": [
+    {
+      "id": "run13",
+      "sequence": "outdoor_hard_01a",
+      "requested_duration_sec": 380.0,
+      "wall_duration_sec": 385.862303322996,
+      "passed_all_current_gates": true,
+      "failed_gates": [],
+      "metrics": {
+        "coverage_ratio": 0.992104793222327,
+        "covered_duration_sec": 376.99982142448425,
+        "translation_ate_rmse_m": 1.1424958568206272,
+        "translation_end_error_m": 3.1115047065782298,
+        "rpe_translation_median_m": 0.15727120912544518,
+        "rotation_ate_rmse_deg": 1.4787272019298572,
+        "rpe_rotation_median_deg": 0.6755623781791303,
+        "max_pose_gap_sec": 0.10016703605651855,
+        "max_pose_jump_m": 0.18924309870327405,
+        "max_pose_jump_rotation_deg": 3.852781611658036,
+        "processing_p95_sec": 0.028260725,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    },
+    {
+      "id": "run14",
+      "sequence": "outdoor_hard_01b",
+      "requested_duration_sec": 302.0,
+      "wall_duration_sec": 307.8987200439442,
+      "passed_all_current_gates": true,
+      "failed_gates": [],
+      "metrics": {
+        "coverage_ratio": 0.9903985167181255,
+        "covered_duration_sec": 299.1003520488739,
+        "translation_ate_rmse_m": 1.5385721145395466,
+        "translation_end_error_m": 2.0545771028778854,
+        "rpe_translation_median_m": 0.19121423233678908,
+        "rotation_ate_rmse_deg": 1.5977825136849375,
+        "rpe_rotation_median_deg": 0.8412398113046388,
+        "max_pose_gap_sec": 0.008353948593139648,
+        "max_pose_jump_m": 0.014261851487581597,
+        "max_pose_jump_rotation_deg": 5.898945994843444,
+        "processing_p95_sec": 0.053849948999999994,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    },
+    {
+      "id": "run15_repeat01",
+      "sequence": "outdoor_hard_02a",
+      "requested_duration_sec": 363.0,
+      "wall_duration_sec": 368.88135802105535,
+      "passed_all_current_gates": false,
+      "failed_gates": [
+        "translation_ate"
+      ],
+      "metrics": {
+        "coverage_ratio": 0.991460301659324,
+        "covered_duration_sec": 359.9000895023346,
+        "translation_ate_rmse_m": 2.0594281295588655,
+        "translation_end_error_m": 3.078060161008636,
+        "rpe_translation_median_m": 0.1797306274662206,
+        "rotation_ate_rmse_deg": 1.6761399395320535,
+        "rpe_rotation_median_deg": 0.6346931240763218,
+        "max_pose_gap_sec": 0.008573770523071289,
+        "max_pose_jump_m": 0.016247899655651103,
+        "max_pose_jump_rotation_deg": 3.585360445454061,
+        "processing_p95_sec": 0.035808224,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    },
+    {
+      "id": "run17_repeat02",
+      "sequence": "outdoor_hard_02a",
+      "requested_duration_sec": 363.0,
+      "wall_duration_sec": 368.7091412129812,
+      "passed_all_current_gates": false,
+      "failed_gates": [
+        "translation_ate"
+      ],
+      "metrics": {
+        "coverage_ratio": 0.991460301659324,
+        "covered_duration_sec": 359.9000895023346,
+        "translation_ate_rmse_m": 2.02337196963614,
+        "translation_end_error_m": 3.0488783026985775,
+        "rpe_translation_median_m": 0.18296961497204062,
+        "rotation_ate_rmse_deg": 1.7154309499160851,
+        "rpe_rotation_median_deg": 0.6379835624584066,
+        "max_pose_gap_sec": 0.008573770523071289,
+        "max_pose_jump_m": 0.01645161341394391,
+        "max_pose_jump_rotation_deg": 3.5850877258366145,
+        "processing_p95_sec": 0.037163337,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    },
+    {
+      "id": "run20_z_bridge_repeat01",
+      "sequence": "outdoor_hard_02a",
+      "requested_duration_sec": 363.0,
+      "wall_duration_sec": 368.87160101300105,
+      "prior_map_vertical_gain": 1.0,
+      "passed_all_current_gates": true,
+      "failed_gates": [],
+      "metrics": {
+        "coverage_ratio": 0.991460301659324,
+        "covered_duration_sec": 359.9000895023346,
+        "translation_ate_rmse_m": 1.9261487862027733,
+        "translation_end_error_m": 2.853730416097297,
+        "rpe_translation_median_m": 0.1806983865230643,
+        "rotation_ate_rmse_deg": 1.6825618166674927,
+        "rpe_rotation_median_deg": 0.629357097783559,
+        "max_pose_gap_sec": 0.008573770523071289,
+        "max_pose_jump_m": 0.015996936118981897,
+        "max_pose_jump_rotation_deg": 3.5852858074735043,
+        "processing_p95_sec": 0.038549368,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    },
+    {
+      "id": "run21_z_bridge_repeat02",
+      "sequence": "outdoor_hard_02a",
+      "requested_duration_sec": 363.0,
+      "wall_duration_sec": 367.7832050919533,
+      "prior_map_vertical_gain": 1.0,
+      "passed_all_current_gates": true,
+      "failed_gates": [],
+      "metrics": {
+        "coverage_ratio": 0.991460301659324,
+        "covered_duration_sec": 359.9000895023346,
+        "translation_ate_rmse_m": 1.7946390730291173,
+        "translation_end_error_m": 2.8269908244298674,
+        "rpe_translation_median_m": 0.18096794788754772,
+        "rotation_ate_rmse_deg": 1.7027576667313622,
+        "rpe_rotation_median_deg": 0.6281462839212184,
+        "max_pose_gap_sec": 0.008573770523071289,
+        "max_pose_jump_m": 0.016581540851882046,
+        "max_pose_jump_rotation_deg": 3.585714341357547,
+        "processing_p95_sec": 0.030422028999999996,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      },
+      "non_planar_3d_check": {
+        "passed_all_current_gates": false,
+        "failed_gates": [
+          "translation_ate",
+          "translation_end",
+          "rpe_translation"
+        ],
+        "translation_ate_rmse_m": 9.206421424461631,
+        "translation_end_error_m": 14.293483119081827,
+        "rpe_translation_median_m": 0.29667413191675013
+      }
+    },
+    {
+      "id": "run16",
+      "sequence": "outdoor_hard_02b",
+      "requested_duration_sec": 298.0,
+      "wall_duration_sec": 302.83892562706023,
+      "passed_all_current_gates": true,
+      "failed_gates": [],
+      "metrics": {
+        "coverage_ratio": 0.99026580144895,
+        "covered_duration_sec": 295.0992088317871,
+        "translation_ate_rmse_m": 0.9078793107108399,
+        "translation_end_error_m": 1.411690387835277,
+        "rpe_translation_median_m": 0.17744844712044822,
+        "rotation_ate_rmse_deg": 1.7647443406606451,
+        "rpe_rotation_median_deg": 0.9222871498968318,
+        "max_pose_gap_sec": 0.00823211669921875,
+        "max_pose_jump_m": 0.014882369875702895,
+        "max_pose_jump_rotation_deg": 3.5380758093153233,
+        "processing_p95_sec": 0.047886651,
+        "tf_jump_count": 0,
+        "unauthorized_reset_count": 0
+      }
+    }
+  ],
+  "scope_limitations": [
+    "The opt-in outdoor_hard_02a Z-bridge passed the planar ground-vehicle gate twice (1.926 m and 1.795 m ATE), but its repeat-2 non-planar 3D ATE remained 9.206 m.",
+    "Kidnapped-pose recovery has not passed a full replay gate.",
+    "Map registration eventually rejected in every sequence; the frozen correction and continuous odometry carried the remainder."
+  ]
+}

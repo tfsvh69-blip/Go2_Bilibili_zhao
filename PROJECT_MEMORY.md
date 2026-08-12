@@ -2,12 +2,171 @@
 
 ## 当前状态
 
-更新时间：2026-08-09
+更新时间：2026-08-12
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
 Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
-当前执行 `colcon list` 可识别 21 个 ROS 2 包。
+当前执行 `colcon list` 可识别 24 个 ROS 2 包。
+
+`go2_navigation` 当前以统一入口提供两条互斥闭环：默认
+`online_slam` 使用 Slam Toolbox 边建图边导航；`static_map` 默认以 AMCL 在固定二维图
+定位。`lidar_ndt` 通过二维全局 EKF、`ndt_cuda` 作为实验后端保留。两种模式都复用
+SmacPlanner2D + SmoothPath + RPP（默认）/MPPI（对照）以及
+`twist_mux → velocity_smoother → collision_monitor → /cmd_vel` 安全控制链。
+
+## 2026-08-12 建图、定位与导航抖动修复
+
+### 根因与方案
+
+- 固定 `/map` 来自 `map_server`，只含保存范围；VLP-16、D435 和 costmap 不会扩展它。
+  默认流程改为 Slam Toolbox 在线模式，固定图流程改用官方 AMCL。
+- 旧运行中单帧 NDT 拒绝立即触发 `/pause_navigation`，形成速度反复归零并最终
+  `Failed to make progress`。NDT 清锁 fitness 还保留不适配的 1.0，而健康值约 3.5。
+- 六自由度 NDT 使用振动的 `base_link` 直接发布全局 TF；二维导航现统一使用
+  `base_footprint`。`lidar_ndt` 关闭直接 TF，由 `robot_localization` `two_d_mode` 发布
+  平面 `map -> odom`。
+- 2D 激光链未接通且 D435 配置订阅错误话题。现统一把 VLP-16 水平切片转换为 `/scan`，
+  D435 使用实际 `/depth/color/points`，局部感知按高度排除地面和机身点。
+
+### 实际实现
+
+- `simulation_navigation.launch.xml` 成为唯一推荐入口：
+  `navigation_mode:=online_slam|static_map`（默认在线）、
+  `localization:=amcl|lidar_ndt|ndt_cuda`（固定图默认 AMCL）、`map_session`、`map_dir`。
+  旧在线入口保留兼容 wrapper，`static_bundle` 仅作弃用别名。
+- 固定图新增 `map_server + amcl + lifecycle_manager_localization`；在线模式由
+  Slam Toolbox 唯一发布 `map -> odom`。标准 `nav2_bt_navigator` 的五个 action endpoint
+  显式重映射到 `/navigate_to_pose_raw`，已删除仅负责改名的派生包。
+- 感知和导航全部使用 `base_footprint`。全局障碍层使用 `/scan`；局部代价图与
+  Collision Monitor 使用 `/scan + /depth/color/points`。传感器过期联调值按本机
+  Gazebo 负载实测从计划的 1 秒调整为 2 秒，碰撞保护没有关闭。
+- 安全监督增加 `HEALTHY/DEGRADED/LOST` 滞回：单帧 NDT 拒绝不停车，连续失效 2 秒
+  或明确重定位请求才停车；fitness 5.25 且连续 5 个健康样本后清锁。ROS 图与 lifecycle
+  检查降到 1 Hz。
+- RPP 保持 0.27 m/s 和碰撞预测，控制器 10 Hz，普通容差现为 0.30 m/0.25 rad，
+  `min_approach_linear_velocity=0.10 m/s`。BT 降为 20 Hz，action/service 应答门槛
+  由 20 ms 改为 500 ms，避免把正常调度抖动误判为服务失败。
+- `goal_guard` 改为异步 action 转发和取消传播；bridge 改用单线程执行器；三个 Python
+  辅助进程在 `spin_once` 间加入 5 ms 让步。RViz 降为 20 FPS，点云和 costmap 默认关闭。
+
+### 已实测
+
+- 标准 `bt_navigator` 重映射后，公开 `/navigate_to_pose` 仅由目标门禁提供，内部
+  `/navigate_to_pose_raw` 仅由 Nav2 提供。
+- AMCL 独立启动时 `map_server`、`amcl` 均为 lifecycle `active`，公开
+  `/amcl_pose`；这是固定图模式 `Localization: active` 的数据来源。
+- 固定 AMCL 统一入口在设置 `/initialpose=(3,0,0)` 后，map_server、AMCL、Nav2 lifecycle
+  全部 active，健康检查 PASS；第一个短目标成功。第二个反向目标的恢复动作把机器人带入
+  旧静态图的 lethal/unknown 区，随后目标门禁按设计拒绝后续目标，因此固定图 12 目标未通过，
+  需要在与场景匹配的 PGM 上继续验收，不能通过关闭门禁或碰撞保护规避。
+- 默认在线无界面冷启动健康检查通过，`/pause_navigation=false`；
+  `map -> base_footprint` 的 z/roll/pitch 为二维零值。地图从 `197×209` 增长到
+  `234×223`（0.05 m/cell）。
+- 12 个连续短目标全部 `SUCCEEDED`、无 recovery 和 `aborted`；另一个约 1.2 m 转向目标
+  在传感器出现一次超过 2 秒的 Gazebo 调度停顿后进入恢复，本轮不把它计为长目标通过。
+- 辅助节点 CPU 从旧运行约 56–85% 降为 bridge 16.8%、goal guard 18.2%、安全监督
+  16.6%；`gzserver` 仍约 174%，是剩余负载主项。VLP-16 xacro 标称 10 Hz，本轮在线
+  负载实测约 6–7 Hz，因此 10 分钟控制周期 miss <1% 尚未达到或验证。
+- 源码测试扩展到 32 项并通过，`go2_navigation` 完成构建。静态 AMCL 12 目标、
+  60 秒协方差、移动障碍及失效注入仍列为后续验收项。
+
+### 上游、许可与边界
+
+- 直接复用 Navigation2 Humble（Apache-2.0）的 AMCL、SmacPlanner2D、RPP、Collision
+  Monitor 和生命周期管理；Slam Toolbox 为 LGPL-2.1，pointcloud_to_laserscan 为 BSD，
+  robot_localization 为 BSD-3-Clause，lidar_localization_ros2 为 BSD-2-Clause。
+- 调研的 Go2 社区项目并不直接替换当前架构：`go2_robot` 导航仍在开发，
+  `unitree_go2_nav` 面向 Jazzy/RTAB-Map，`autonomy_stack_go2` 使用 Point-LIO 与独立栈。
+  当前选择是复用成熟 ROS 2 组件并保留 Humble/Gazebo Classic/CHAMP 兼容性。
+- 本轮结论只适用于 RTX 4060 上的 Gazebo Classic 仿真。真值里程计不适用于真机，
+  不得把结果描述为真机定位或导航已验证。
+
+### 2026-08-12 地图质量复核
+
+- `home_01` 的 LIO-SAM PCD 轨迹范围约 `17×8 m`，但点云派生栅格达到约
+  `106×108 m`；约 7950 个点位于地图原点半径 15 m 外。原 PCD 转图参数又以单格
+  `max_z-min_z >= 0.4 m` 判障碍、`min_points_per_cell=1`，会把多高度重叠点和单点噪声
+  变成室内黑色散点。该图不再作为 AMCL 推荐输入。
+- 固定 AMCL 现只校验并消费 Slam Toolbox 原生 `map.yaml/map.pgm`；不再强制无关的
+  `GlobalMap.pcd/map_bundle.yaml`。NDT 实验档仍保留严格同源地图包和哈希校验。
+- 健康检查发现 `teleop_twist_keyboard` 直接发布 `/cmd_vel` 时会明确提示关闭并重映射到
+  `/cmd_vel_teleop`。最终 `/cmd_vel` 必须仍由 Collision Monitor 唯一发布。
+- 现场复核确认一次固定图启动的真实命令为
+  `map_dir:=/home/hao/go2_maps/online/home_02`，`map_server` 临时参数文件也明确指向
+  `home_02/map.yaml`；系统没有自动回退到 `home_01` 或根目录 `latest`。
+  `home_02/map.pgm` 为 `378×184、0.05 m/cell` 的 Slam Toolbox 原生图，文件内部自由区
+  较干净；RViz 出现与文件不一致的旧画面时，应检查旧 RViz 缓存画面、`map_server`
+  lifecycle 和 `/map` 发布者，而不能仅凭截图判定加载目录。
+- 当前地图目录约定：`~/go2_maps/online/latest` 是 `save_online_map.sh` 更新的最近在线
+  会话软链接，当前指向 `home_02`，推荐给固定 AMCL 日常启动；
+  `~/go2_maps/online/home_02` 用于可复现实验；`~/go2_maps/latest` 保留给 LIO-SAM/NDT
+  流程，不作为 AMCL 推荐默认图。`map_session:=new` 明确从空白 pose graph 开始。
+
+### 2026-08-12 AMCL 协方差失信保护与可视化默认值
+
+- 现场 `/amcl_pose` 实测标准差为 `x=0.78 m、y=1.18 m、yaw=1.56 rad`；RViz 中紫色
+  椭圆对应 x/y 协方差，黄色长扇形对应 yaw 协方差。该现象证明 AMCL 已失配，而不是
+  激光视野或规划通道；错误 `map -> odom` 会让机器人显示位置跳变并诱发左右纠偏。
+- AMCL 在仿真真值 `/odom` 档把运动模型噪声 `alpha1..5` 从 0.2 降为 0.05，启用
+  `likelihood_field_prob` beam skipping，并把采样光束从 60 增至 90。此参数只作为
+  Gazebo 基线，不外推为真机参数。
+- 安全监督与目标门禁新增协方差滞回：位置/yaw 标准差超过 `0.75 m/0.75 rad` 立即锁速
+  并拒绝新目标，回落至 `0.55 m/0.50 rad` 才恢复可信；健康检查输出实际标准差和
+  `2D Pose Estimate` 操作提示。
+- `simulation_navigation.launch.xml`、建图入口、兼容 wrapper 与 `simdog/start.sh` 现默认
+  打开 Gazebo GUI。无界面只作为自动化/性能测试的显式 `gui:=false` 选项。
+- 独立 ROS Domain 187 加载 `home_02` 验证：`map_server` 与 `amcl` 均进入 `active [3]`，
+  运行参数确认为 `laser_model_type=likelihood_field_prob`、`do_beamskip=true`、
+  `alpha1=0.05`。完整仿真必须冷启动后再做连续目标验收。
+
+### 2026-08-12 初学者术语与 RViz 图解手册
+
+- 新增 `文档/Go2导航建图与RViz初学者图解手册.md`，用本次真实截图解释 AMCL 黄色
+  yaw 协方差、紫色 x/y 协方差、固定地图范围、二维地图黑点、三维 PCD、Slam Toolbox
+  面板和 Navigation 2 状态。
+- 手册覆盖 ROS 2 通信、TF 主链、传感器、SLAM/AMCL/NDT、Nav2、costmap、碰撞保护、
+  速度链、主要参数、缩写与包名，并提供“肉眼现象 → 首查项”索引和操作命令。
+- 根目录协作规则已规定：新增用户可见术语、RViz 元素或典型故障截图时必须同步维护该
+  手册；颜色只能作为辅助，最终以 Display 名称和来源话题为准。
+
+### 2026-08-12 路径圆滑与终点摆动修复（已实施，Gazebo 运行验收待完成）
+
+- 现场 AMCL 标准差约 `0.011/0.029 m、yaw 0.016 rad`，说明本轮终点摆动不是此前的定位
+  跳变。目标约 `(-10.125,-1.635,-179°)`，机器人原地踏步时距离在
+  `0.231→0.263→0.272 m` 跨越 `xy_goal_tolerance=0.25 m`，Humble RPP 因此在终点旋转
+  与重新追位置之间切换。
+- 原 `SimpleProgressChecker` 只计算平移；日志多次出现 `Failed to make progress`，随后
+  Behavior Tree 运行 `BackUp`，实测 `/cmd_vel_nav.linear.x=-0.05`。现改用上游
+  `PoseProgressChecker`，`0.10 m` 平移或 `0.15 rad` 转向任一达到均算进展。
+- 另一个根因是 `rotate_to_heading_min_angle=0.35 rad`（约 20°）会将普通弯道
+  切成“原地转向—直行”。RPP 基线现为前视 `0.55 m`、范围 `0.35–0.80 m`、
+  原地对齐阈值 `0.85 rad`、角速度 `0.35 rad/s`、角加速度 `1.0 rad/s²`。
+- `smoother_server` 原先虽启动但行为树没有调用。现在每次 `ComputePathToPose`
+  后调用 `SmoothPath(SimpleSmoother)`，并开启平滑结果碰撞检查；平滑失败会保留
+  原始有效路径，不直接中止导航。
+- 新增 `controller_profile:=forward_mppi` DiffDrive 对照档，现有 `omni_mppi` 保留；
+  默认仍为低负载 `forward_rpp`。新增 `tuning_gui:=true` 可启动标准
+  `rqt_reconfigure`，运行时参数不写回 YAML。
+- RViz 新增对照：绿色 `Raw Global Plan=/plan`，蓝色
+  `Controller Path (Smoothed)=/received_global_plan`。直接 pytest `37 passed`，
+  `go2_navigation` 构建通过，两个启动入口 `--show-args` 通过，XML/YAML/规则
+  镜像检查通过。
+- 独立 Domain 193/194 实测 RPP 档的 controller、smoother、planner、BT、速度平滑和
+  Collision Monitor 均进入 `active`，运行参数回读为 `PoseProgressChecker`、
+  `0.85 rad`、`0.30 m`；`/smooth_path` action 存在。0.60 m 在线短目标约 2 秒
+  `SUCCEEDED`、recovery=0。该次新建地图起点的平滑碰撞检查判定失败，
+  BT 按设计回退原路径；因此平滑实际采用率仍要在正式固定地图中统计。
+- 独立 Domain 195 实测 `forward_mppi` 成功激活，运行回读为
+  `DiffDrive`、`batch_size=800`、`model_dt=0.1`。12 目标、移动障碍和 10 分钟
+  负载尚不能记为已通过。
+- 独立 Domain 196 验证 RPP 动态参数回调：
+  `FollowPath.rotate_to_heading_min_angle` 从 `0.85` 运行时改为 `0.90`
+  立即回读生效，再恢复 `0.85`。这与 `rqt_reconfigure` 使用的 ROS 2
+  parameter service 相同；本次自动验收为无界面，没有把 Qt 窗口肉眼操作记为已验证。
+
+以下 2026-08-11 及更早记录保留为历史证据；其中“默认 NDT”、独立在线入口和派生
+bt_navigator 等描述已被本节当前架构取代。
 
 当前已增加仅面向 Gazebo 的动作控制包 `go2_behaviors`，可执行打招呼、点头、
 伸展、趴下、挥爪和简单舞蹈，并使用 `stand` 从保持趴下恢复。动作复用现有
@@ -31,6 +190,215 @@ bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
 source scripts/setup_simdog.bash
 ```
+
+## 2026-08-11 前向导航、在线 SLAM 与仿真里程计闭环
+
+### 目标与上游选择
+
+- 解决 MPPI Omni 让 Go2 斜向平移、速度偏慢、最后才转到目标朝向的问题；默认改用
+  Nav2 Humble `RegulatedPurePursuitController`，保留 MPPI 为显式对照档。
+- 明确固定 `/map` 不会自动扩大，新增独立 `pointcloud_to_laserscan + slam_toolbox`
+  在线二维建图导航入口，支持从空图开始、保存 PGM/YAML 与 pose graph、续建。
+- 上游依据：Nav2 RPP 与 SmacPlanner2D 均来自 Navigation2 Humble（Apache-2.0）；
+  Slam Toolbox 为 LGPL-2.1，`pointcloud_to_laserscan` 为 BSD。未引入新的自研规划、
+  控制或 SLAM 算法，只增加项目编排、门禁与仿真适配。
+
+### 实际实现
+
+- `controller_profile:=forward_rpp` 成为默认档：期望前向速度 `0.27 m/s`、大角度先
+  转向、曲率降速、碰撞预测；`omni_mppi` 完整保留。控制器公共配置与两个档案分离，
+  避免 Humble 参数互相污染。短距离进展阈值由 `0.5 m/10 s` 放宽为
+  `0.10 m/15 s`，避免正常四足短目标被误判卡住。
+- 新增 `simulation_online_mapping_navigation.launch.xml`、`online_slam.launch.py`、
+  `online_mapping.yaml` 和在线 RViz 配置。在线模式不启动 NDT/map_server，由
+  Slam Toolbox 唯一发布 `map -> odom`，目标门禁直接使用实时 `/map` 与 TF。
+- 新增 `save_online_map.sh`：原子保存 `map.pgm`、`map.yaml`、`slam.posegraph`、
+  `slam.data` 并维护 `~/go2_maps/online/latest`。修复 Humble `ros2 service call`
+  在不同补丁版本中输出 `result=0`/`result: 0` 的兼容解析。
+- 新增 `/navigation/stop` 与 `/navigation/resume`。停止会取消公开/内部 action、锁存
+  `/pause_navigation`，并通过 twist_mux 最高优先级 `/cmd_vel_stop` 连续注入零速度；
+  恢复只解锁，旧目标不续行。
+- 运行诊断发现真正的剩余阻断不是 RPP，而是 CHAMP 足端 `/odom` 严重低估 Gazebo
+  位移：速度链传到最终 `/cmd_vel=0.10 m/s` 时，真值移动约 `0.093 m`，旧 `/odom`
+  仅累计约 `0.007 m`，导致 Nav2 `Failed to make progress`。两个统一 Gazebo 导航
+  入口现关闭 `footprint_to_odom_ekf`，由新增 `simulation_odom` 把
+  `/odom/ground_truth` 首帧转换为零原点 `/odom` 与唯一
+  `odom -> base_footprint`。机器人仍由 CHAMP 步态与 Gazebo 物理执行；真机和普通
+  分组件入口不使用真值适配器。
+- Gazebo P3D 真值更新率由 10 Hz 提高到 50 Hz，RPP TF 容差调到 0.2 秒；NDT 诊断
+  过期锁联调默认放宽为 3 秒。目标门禁、碰撞监控、最终速度唯一出口均未关闭。
+- RViz 增加 `Navigation 2` 面板、Nav2 Goal 工具、在线 `Live SLAM Map`/`SLAM Scan`；
+  文档和 `AGENTS.md`/`CLAUDE.md` 增加“现象到根因、主流方案、参数含义、具体按键与
+  已实测/推断分离”的教学规则。
+
+### 运行验证（已实测）
+
+- 在线模式冷启动健康检查 PASS，8 个 lifecycle 节点 active；`/scan` 约 9.76 Hz，
+  RPP 运行时参数回读为期望速度 `0.27 m/s`。短目标 action 返回状态 4
+  （`SUCCEEDED`），`/cmd_vel_nav.linear.y=0`，真值与新 `/odom` 位移完全一致。
+- 调整进展阈值后的在线目标从约 `(0.38,0.05)` 到 `(0.80,0)` 在约 2 秒内成功，
+  无 recovery；最终速度峰值约 `vx=0.237 m/s`、`vy=0`。
+- 在线地图在机器人移动中由 `198×209` 扩大到 `230×209`（0.05 m/cell），证明
+  `/map` 动态更新；保存产生四个非空文件，随后以 `map_session` 续建加载成功。
+- 锁存停止在仍持续发布 `0.10 m/s` 键盘输入时调用成功，最终 `/cmd_vel` 在
+  0.3 秒后为零并保持；健康状态下 `resume` 成功。
+- 固定地图模式发布 `(4,0)` 初始位姿后 NDT 输出约 `(3.81,0.02)`，10 个 lifecycle
+  节点 active、`health_check` PASS；`(4.30,0)` 目标返回 `SUCCEEDED`，最终
+  `linear.y=0`，Gazebo 真值移动约 `0.20 m`。
+- P3D 调整后 `/odom` 实测约 `48.9 Hz`，在线健康检查再次 PASS。
+  `go2_navigation` 与 `go2_description` 构建通过；pytest `19 passed`，Python/YAML/
+  launch 解析、flake8、xmllint、规则镜像与 `git diff --check` 全部通过。
+
+### 边界与下一步
+
+- 真值里程计仅是 Gazebo 导航基准，不代表真实 Go2 的状态估计已经解决。后续真机或
+  高保真验证必须融合足端接触、IMU 与机身速度，不能使用 `/odom/ground_truth`。
+- 当前固定 PGM 只有保存时的已知范围，本来不会扩图；要学习未知区域必须选在线入口。
+  在线二维投影会丢失高度信息，正式三维建图仍使用 LIO-SAM。
+- 本轮完成短目标与停止/保存/续建验证，未完成 12 次导航、移动障碍、长走廊回环和
+  MPPI/RPP 量化对照。
+
+## 2026-08-09 阶段一：室内平地自主导航闭环
+
+### 阶段目标与调研
+
+- 在完整四足仿真上建立「室内平地导航闭环」，废弃旧的轮式 AMCL + DWB 配置
+  （`go2_config/config/autonomy/navigation.yaml`，存在轮式模型、无效传感器话题
+  `/scan`、`/zed/...`、`use_sim_time: False`、`robot_radius=0.22`、
+  `bt_navigator.odom_topic` 硬编码 LIO-SAM 内部话题等问题）。
+- 定位默认引入 BSD-2-Clause 的 `lidar_localization_ros2` v1.2.0（固定提交
+  `b40a02d4341245c30007159e94d4d13081045327`），复用其 NDT/GICP、自动初始定位
+  （BBS，纯 C++ 无 gtsam）、诊断、重定位、PCD 转二维地图和评测能力；现有 CUDA
+  NDT（`ndt_relocalization`）保留为 `localization:=ndt_cuda` 实验档。
+- 规划器 SmacPlanner2D、控制器 MPPI（Omni 全向），速度限制与 CHAMP 步态一致；
+  footprint 用机身多边形而非圆形半径。
+- 控制链 `Nav2/键盘/Unitree Move -> twist_mux -> velocity_smoother ->
+  collision_monitor -> /cmd_vel -> CHAMP`，行为动作/趴下/定位失效时发布
+  `/pause_navigation` 锁住输入并输出零速度。
+
+### 实际操作
+
+- 新增 `simdog/src/go2_navigation`（ament_python）：
+  - `go2_navigation/build_map_bundle.py`：`GlobalMap.pcd` → `map.yaml/pgm` +
+    `map_bundle.yaml`（SHA-256 清单），支持 `--x-min/--x-max/--y-min/--y-max`
+    裁剪聚焦导航区域、`--obstacle-height-m`、`--min-points-per-cell`。
+  - `go2_navigation/validate_map_bundle.py`：启动前校验三件套存在且哈希匹配。
+  - `go2_navigation/health_check.py`：话题 / TF 链 / 控制器健康检查。
+  - `launch/navigation.launch.py`：地图校验 → 定位 → Nav2（自起节点 +
+    lifecycle_manager）→ 安全链 → RViz。
+  - `launch/localization.launch.py`：定位入口（默认 `lidar_ndt`，事件驱动
+    生命周期；实验档 `ndt_cuda`）。
+  - `launch/mapping.launch.xml`：建图入口（Gazebo + LIO-SAM）。
+  - `scripts/save_map.sh`：保存 PCD 并生成同源地图包。
+  - `config/navigation.yaml`、`twist_mux.yaml`、`localization_ndt.yaml`。
+- `ndt_omp_ros2` 更新到上游 `rsasaki0109/ndt_omp_ros2` humble 分支（含 NDT
+  诊断成员 `last_correspondence_count_` 等），修复与 `lidar_localization_ros2`
+  的 API 不匹配。
+- `realsense_ros_gazebo/xacro/depthcam.xacro` 开启 D435 深度点云
+  （`<pointCloud>true</pointCloud>`），话题 `/depth/color/points`。
+- `go2_unitree_sim_bridge` 速度输出话题参数化为 `cmd_vel_topic`（默认
+  `/cmd_vel`，导航模式设为 `/cmd_vel_unitree` 经 twist_mux 接入安全链）。
+- `scripts/install_dependencies.sh` 增加 `ros-humble-twist-mux`、
+  `python3-open3d`。
+
+### 构建与验证
+
+- 构建：`colcon build --packages-select ndt_omp_ros2 ndt_relocalization
+  lidar_localization_ros2 go2_navigation go2_unitree_sim_bridge`。
+- `lidar_localization_ros2` 上游 `g2_ndt_score` 的 `${ndt_omp_ros2_INCLUDE_DIRS}`
+  变量经 ament 导出不含 ndt_omp 自身 include，本地改为直接链接
+  `ndt_omp_ros2::ndt_omp`（记录在 CMakeLists 注释中）。
+- 独立 `ROS_DOMAIN_ID=141` + CycloneDDS（lo 接口）无界面 Gazebo 验证：
+  - D435 点云有数据（frame `d435_depth_optical_frame`，约 5 Hz，受 Gazebo
+    负载限制）；
+  - 定位器加载 `GlobalMap.pcd`、接收 `/initialpose`、NDT 配准（fitness 约
+    0.59 < 6.0）、发布 `/pcl_pose` 与唯一 `map -> odom`；
+  - 完整导航栈 10 个节点全部 `active`，控制链话题
+    `/cmd_vel_nav -> /cmd_vel_switched -> /cmd_vel_smoothed -> /cmd_vel`
+    全部存在，`/cmd_vel` 最终订阅者为 CHAMP `quadruped_controller_node`；
+  - 端到端：Nav2 目标被接受、`/plan` 生成路径、机器人沿路径移动（一次测试
+    35 s 移动约 1.4 m）。
+- 建图：自动驱动机器人走矩形轨迹（原地转圈 + 前后左右移动）供 LIO-SAM 建图，
+  保存后生成裁剪到导航区域（约 8×8 m）的同源地图包。
+- GPU 验证：`bash scripts/verify_gpu_runtime.sh` 通过——CUDA NDT 在 RTX 4060
+  （compute 8.9）启用、3 级多分辨率、NDT 进程约 98 MiB、采样峰值 GPU 31%、
+  发布 `/ndt_pose`。
+- 经验：手动 `colcon build --packages-select ndt_relocalization` 时若未设置
+  CUDA 环境变量，会构建成 CPU 回退版（不链接 libcudart），
+  `verify_gpu_runtime.sh` 会失败；GPU 后端必须按
+  `scripts/build_workspaces.sh` 的方式带 `-DUSE_FAST_GICP_CUDA=ON` 等参数构建。
+
+### 运行边界与下一步
+
+- **2026-08-09 稳健闭环修复**：普通仿真入口统一固定为 Domain 0，
+  `GO2_UNITREE_SIM_DOMAIN_ID` 是唯一允许的显式隔离覆盖，避免遗留 Domain 141
+  使 action client 与 Nav2 落在不同 DDS 图。新增
+  `simulation_navigation.launch.xml`，一次启动 Gazebo、Unitree bridge（固定
+  `/cmd_vel_unitree`）、定位、Nav2、安全链和 RViz。
+- 地图包清单升级为 `schema_version: 1`：包含 PCD、`map.yaml`、`map.pgm`、
+  `map_stats.json` 的哈希、路径、角色和生成参数；校验器拒绝旧清单、目录逃逸、
+  哈希错误和离线膨胀地图。重建会将旧派生产物备份到 `map_backup_<时间戳>`。运行
+  验证发现 NDT 的真实初始位置约为 `(-0.1,0.8)`，旧 `[0,8) × [-4,4)` 裁剪恰好
+  把机器人和雷达放在边界外；现已保持原始 PCD 不变，在
+  `[-2,8) × [-4,4)` 使用 `offline_inflate_radius_m: 0.0` 原子重建，旧派生产物位于
+  `~/go2_maps/latest/map_backup_20260809_202436`。
+- 新增 `goal_guard`：对外保持 `/navigate_to_pose` 与 RViz `/goal_pose`，内部
+  使用 `/navigate_to_pose_raw`。它在触发 SmacPlanner 前检查地图坐标、有限值、
+  边界、已知自由栅格、联调默认 0.10 m 余量、定位新鲜度/诊断、起点与底层 action；
+  这是对
+  Humble 越界目标可能使 planner_server 退出的防护。Smac `max_iterations` 改为
+  `100000`，MPPI 参数改为 Humble 实际声明的 critic 名称。
+- 因 Humble `nav2_bt_navigator` 将 `navigate_to_pose` action 名硬编码且不对 action
+  endpoint remap 生效，新增 `go2_nav2_bt_navigator`（Apache-2.0）。它只派生
+  Humble 的 lifecycle 装配与 NavigateToPose 名称，复用系统 Nav2 的规划、控制和
+  行为实现；源码头保留来源与许可证说明。
+- `behavior_server` 的恢复速度也 remap 到 `/cmd_vel_nav`，不再绕开
+  `twist_mux -> velocity_smoother -> collision_monitor`；安全监督在定位失效、
+  重定位、行为执行或关键导航节点掉线时持续发布 `/pause_navigation`。健康检查改用
+  单调墙钟，覆盖域、10 个 lifecycle 状态、TF、定位、控制器、action 和速度链。
+- 采用“闭环优先、约束渐进”的阶段一联调参数：目标门禁最小余量由 0.55 m 调整为
+  可配置的 0.10 m，全局 costmap 膨胀从 0.55 m 调整为 0.30 m；越界、占用栅格、
+  非有限值、定位失效、碰撞监控和最终速度出口唯一性仍保留。闭环稳定后再依据实测
+  逐步收紧，不一次叠加多层高阈值。
+- 扩图后 Domain 0 冷启动实测：NDT 收敛至约 `(-0.1,0.9)`，不再出现
+  `Sensor origin ... is out of map bounds`，10 个 lifecycle 节点 active，
+  `health_check` PASS。`(-0.1,0.9) -> (-0.1,1.5)` action 返回 `SUCCEEDED`，
+  Gazebo 真值移动约 `0.517 m`，最终 NDT 位姿为 `(-0.090,1.546)`；返回
+  `(-0.1,0.9)` 同样成功。`/cmd_vel` 唯一发布者仍为 `collision_monitor`。
+- 导航模式键盘遥控必须把 `cmd_vel` remap 到 `/cmd_vel_teleop`。按此入口连续按 `i`
+  实测 Gazebo 真值前进约 `0.188 m`；直接运行未 remap 的键盘节点会争用最终
+  `/cmd_vel`，不属于有效的导航安全链测试。
+- 统一入口的 `rviz:=true` 曾因 XML 嵌套 launch 的布尔传值与 Python 的严格字符串
+  比较而没有启动 RViz。现改为大小写无关的布尔解析，并把 Gazebo 子启动文件置于
+  scoped group，避免其内部 `rviz:=false` 覆盖导航开关；重建后冷启动日志已出现
+  `rviz2: process started`，且 RViz 正常接收 Velodyne 消息。
+- RViz 导航配置修正为 `Fixed Frame: map`，避免 `2D Pose Estimate` 与
+  `2D Goal Pose` 携带 `odom` 而被定位器或 `goal_guard` 拒绝。`Static Map` 现明确
+  订阅 `/map`，`Local Costmap`、`Global Costmap` 分离且默认关闭，浅蓝色
+  `Localization Map` 保留 `/global_map`；`NDT Pose` 修复为订阅 `/pcl_pose`，默认
+  采用俯视视角。地图服务在 Nav2 生命周期序列中提前激活，使初始位姿前即可显示
+  静态地图。健康检查新增 RViz 配置、`/map`/`/global_map`、重复关键节点、重复
+  action server 和最终 `/cmd_vel` 发布端点数量检查；当前地图仍沿用
+  `~/go2_maps/latest`，不纳入自动探索或重新建图。
+- 冷启动图审计发现默认 NDT 定位器的 PCD 可视化实际发布名为 `/initial_map`，而非
+  配置期望的 `/global_map`。定位启动入口现将其显式 remap 到 `/global_map`；这不会
+  改动 Nav2 的二维 `/map`，可避免 RViz 的 `Localization Map` 空白和健康检查误报。
+- 短距离目标执行日志确认另一处 Humble 控制阻断：默认 BT 的 `FollowPath` 未携带
+  `goal_checker_id`，在同时配置 `general_goal_checker` 与 `precise_goal_checker` 时，
+  `controller_server` 因空 ID 直接 abort 并进入 recovery，MPPI 尚未产生控制命令。
+  新增从官方默认树派生的 `go2_navigate_to_pose.xml`，只显式指定
+  `general_goal_checker`，并由 `navigation.launch.py` 传给 BT Navigator。
+- 旧的 `(4,0)` 人工种子短测只证明控制器与行为树能够执行；长时间观察后 NDT 会
+  收敛到真实地图区域约 `(0,0.8)`，因此不得再把 `(4,0)` 当成当前仿真的初始位姿。
+- `/odom/ground_truth` 的父坐标系是 `world`，而导航目标与 NDT 位姿属于 `map`；当前
+  未发布 `map -> world`，不能直接将两组绝对坐标相减作为真值到达误差。后续完整验收
+  应补充显式坐标转换或以 Gazebo 真值在 `map` 中的对应观测记录误差。
+- CycloneDDS + lo 接口（无多播）导致 CLI 发现慢，测试脚本需较长等待；这是
+  项目为 Unitree 仿真隔离的标准配置。
+- 阶段一尚未完成：完整 12 次静态导航验收、移动障碍测试与实机等价验证。
+- `ndt_cuda` 实验档保留但未在本阶段端到端验证。
+- 后续阶段二起：IMU 职责修正（删除「IMU 提供线速度」）、LIO-SAM 回环、
+  算法对比接口、坡地扩展。
 
 ## 2026-08-09 Unitree SDK2/ROS 2 兼容桥 v1
 

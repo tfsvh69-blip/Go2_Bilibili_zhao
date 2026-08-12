@@ -45,7 +45,7 @@ open_terminal() {
 }
 
 open_terminal "Go2 Gazebo" \
-    "ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true"
+    "ros2 launch go2_config gazebo_velodyne.launch.py gui:=true rviz:=true"
 
 sleep "${wait_time}"
 

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="650" viewBox="0 0 1080 650">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#263238"/>
+    </marker>
+    <style>
+      .title { font: 700 27px sans-serif; fill: #102027; }
+      .label { font: 700 22px sans-serif; fill: #102027; }
+      .body { font: 18px sans-serif; fill: #263238; }
+      .line { stroke: #263238; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .badge { fill: #fff; stroke: #263238; stroke-width: 3; }
+      .num { font: 700 19px sans-serif; text-anchor: middle; dominant-baseline: central; fill: #263238; }
+    </style>
+  </defs>
+  <rect width="1080" height="650" fill="#f7f9fa"/>
+  <text x="30" y="38" class="title">AMCL Pose 图形怎样读：图越大，定位越不确定</text>
+  <image href="amcl_covariance_lost.png" x="30" y="58" width="509" height="582"/>
+
+  <circle cx="277" cy="300" r="17" class="badge"/><text x="277" y="300" class="num">1</text>
+  <circle cx="390" cy="405" r="17" class="badge"/><text x="390" y="405" class="num">2</text>
+  <circle cx="185" cy="215" r="17" class="badge"/><text x="185" y="215" class="num">3</text>
+  <circle cx="325" cy="338" r="17" class="badge"/><text x="325" y="338" class="num">4</text>
+  <circle cx="290" cy="322" r="17" class="badge"/><text x="290" y="322" class="num">5</text>
+
+  <path d="M735 115 C650 115 600 170 295 285" class="line"/>
+  <text x="570" y="84" class="label">1 机器人估计位姿</text>
+  <text x="570" y="110" class="body">不是 Gazebo 真身，而是 AMCL 认为狗所在的位置。</text>
+
+  <path d="M740 225 C640 235 590 300 415 390" class="line"/>
+  <text x="570" y="194" class="label">2 紫色椭圆：x/y 协方差</text>
+  <text x="570" y="220" class="body">像“我大概在这片区域”；越大，位置越拿不准。</text>
+
+  <path d="M740 335 C630 335 560 270 205 220" class="line"/>
+  <text x="570" y="304" class="label">3 黄色扇形：yaw 协方差</text>
+  <text x="570" y="330" class="body">像指南针误差范围；拉成长带表示朝向已失信。</text>
+
+  <path d="M740 445 C620 450 535 405 345 346" class="line"/>
+  <text x="570" y="414" class="label">4 橙色箭头：估计朝向</text>
+  <text x="570" y="440" class="body">箭头与 Gazebo 狗头方向明显不符时，先重定位。</text>
+
+  <path d="M740 555 C620 550 500 450 307 333" class="line"/>
+  <text x="570" y="524" class="label">5 绿色线：全局规划路径</text>
+  <text x="570" y="550" class="body">导航打算走的路线；它正确与否依赖定位和地图。</text>
+
+  <rect x="566" y="585" width="480" height="45" rx="8" fill="#fff3cd" stroke="#e0a800"/>
+  <text x="582" y="614" class="body">关键判断：扇形/椭圆横穿地图 = 定位故障，不是雷达范围。</text>
+</svg>

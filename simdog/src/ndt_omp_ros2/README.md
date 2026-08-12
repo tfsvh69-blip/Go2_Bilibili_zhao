@@ -1,5 +1,10 @@
 # ndt_omp_ros2
 
+> 本目录于 2026-08-09 更新至上游
+> [rsasaki0109/ndt_omp_ros2](https://github.com/rsasaki0109/ndt_omp_ros2) `humble`
+> 分支（BSD-2-Clause），以提供 `lidar_localization_ros2` 所需的 NDT 诊断成员
+> （`last_correspondence_count_` 等）。更新保留了原中文说明。
+
 本包提供基于 PCL 衍生、经 OpenMP 加速的 Normal Distributions Transform（NDT）及 GICP 算法。NDT 算法经过 SSE 友好改造并实现多线程化，运行速度可达 PCL 原版的最多 10 倍。
 
 ### 性能基准测试

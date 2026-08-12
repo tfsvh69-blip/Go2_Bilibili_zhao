@@ -1,0 +1,228 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+      Splitter Ratio: 0.5
+    Tree Height: 620
+  - Class: slam_toolbox::SlamToolboxPlugin
+    Name: Slam Toolbox
+  - Class: nav2_rviz_plugins/Navigation 2
+    Name: Navigation 2
+  - Class: rviz_common/Views
+    Name: Views
+    Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Alpha: 0.5
+      Cell Size: 1
+      Color: 160; 160; 164
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/RobotModel
+      Enabled: true
+      Name: RobotModel
+      Alpha: 1
+      Collision Enabled: false
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Name: TF
+      Frame Timeout: 15
+      Marker Scale: 0.6
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: Live SLAM Map
+      Alpha: 0.8
+      Color Scheme: map
+      Draw Behind: true
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_updates
+      Value: true
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: Global Costmap
+      Alpha: 0.45
+      Color Scheme: costmap
+      Draw Behind: false
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /global_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /global_costmap/costmap_updates
+      Value: false
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: Local Costmap
+      Alpha: 0.55
+      Color Scheme: costmap
+      Draw Behind: false
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap_updates
+      Value: false
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: SLAM Scan
+      Alpha: 1
+      Color: 255; 85; 0
+      Decay Time: 0
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /scan
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Velodyne Points
+      Alpha: 0.35
+      Autocompute Intensity Bounds: true
+      Color Transformer: Intensity
+      Decay Time: 0
+      Position Transformer: XYZ
+      Size (Pixels): 2
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /velodyne_points
+      Value: false
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Raw Global Plan
+      Color: 0; 255; 0
+      Line Style: Lines
+      Line Width: 0.05
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Controller Path (Smoothed)
+      Color: 0; 170; 255
+      Line Style: Lines
+      Line Width: 0.04
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /received_global_plan
+      Value: true
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: RPP Lookahead Arc
+      Color: 255; 170; 0
+      Line Style: Lines
+      Line Width: 0.03
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /lookahead_collision_arc
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 20
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: nav2_rviz_plugins/GoalTool
+    - Class: rviz_default_plugins/PublishPoint
+      Single click: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /clicked_point
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Value: true
+  Views:
+    Current:
+      Angle: -1.5708
+      Class: rviz_default_plugins/TopDownOrtho
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Scale: 12
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 0
+      Y: 0
+    Saved: ~
+Window Geometry:
+  Height: 1008
+  Hide Left Dock: false
+  Hide Right Dock: false
+  Width: 1191
+  X: 120
+  Y: 80

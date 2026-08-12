@@ -4,7 +4,10 @@
 
 项目在检测到 NVIDIA GPU 和 CUDA 12.8 后默认采用以下策略：
 
-- `ndt_relocalization` 默认使用 `registration_backend:=cuda`。
+- 阶段一起默认定位改用 `lidar_localization_ros2` 的 CPU NDT_OMP；
+  CUDA NDT（`ndt_relocalization`）保留为 `localization:=ndt_cuda` 实验档，
+  使用 `registration_backend:=cuda`。
+- `ndt_relocalization` 实验档默认使用 `registration_backend:=cuda`。
 - `scripts/setup_simdog.bash` 默认设置 `CUDA_VISIBLE_DEVICES=0`。
 - 在双显卡笔记本上默认设置 `__NV_PRIME_RENDER_OFFLOAD=1` 和
   `__GLX_VENDOR_LIBRARY_NAME=nvidia`，让 Gazebo、RViz2 和其他 OpenGL

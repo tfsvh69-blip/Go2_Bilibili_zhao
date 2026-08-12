@@ -5,7 +5,7 @@
 ## 概述
 
 `simdog/` 是本项目的唯一 colcon 工作空间。经 `colcon list` 实际识别到
-**21 个 ROS 2 包**：10 个工作空间级功能/接口包，以及 `unitree-go2-ros2/` 下的
+**24 个 ROS 2 包**：13 个工作空间级功能/接口包，以及 `unitree-go2-ros2/` 下的
 8 个 CHAMP 包、1 个遥控包、1 个 Go2 描述包和 1 个 Go2 配置包。
 这些包共同组成完整的 Unitree Go2 四足机器人仿真开发环境。
 
@@ -19,7 +19,10 @@
 simdog/src/
 ├── fast_gicp/                   # CUDA 加速点云配准库
 ├── go2_behaviors/               # 常用仿真动作与 CHAMP 控制权仲裁
+├── go2_navigation/              # 自主导航（地图包、Nav2、安全链）
+├── go2_nav2_bt_navigator/       # 内部 raw NavigateToPose 启动器（Apache-2.0 派生）
 ├── go2_unitree_sim_bridge/      # Unitree Sport API 仿真兼容桥
+├── lidar_localization_ros2/     # NDT/GICP 定位库（默认定位后端）
 ├── LIO-SAM/                     # 激光-惯性紧耦合 SLAM
 ├── ndt_omp_ros2/                # OpenMP 加速 NDT 配准
 ├── ndt_relocalization/          # 基于 PCD 地图的 NDT 重定位

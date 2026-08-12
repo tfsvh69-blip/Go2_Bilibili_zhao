@@ -1,0 +1,54 @@
+# Go2 固定二维地图定位参数。
+#
+# 参数基线来自 ROS 2 Humble Nav2 官方 nav2_params.yaml 和仓库内 CHAMP
+# navigation.yaml；这里只保留 Go2 仿真需要覆盖的 frame、LaserScan 与粒子滤波参数。
+# Nav2 AMCL 为 LGPL-2.1-or-later，Nav2 bringup 配置为 Apache-2.0。
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    # 统一仿真入口使用 Gazebo 真值适配 /odom；0.2 会人为扩散大量粒子并在
+    # 对称走廊中形成多峰。这里保留少量噪声，不假装真机里程计也有此精度。
+    alpha1: 0.05
+    alpha2: 0.05
+    alpha3: 0.05
+    alpha4: 0.05
+    alpha5: 0.05
+    base_frame_id: base_footprint
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    # likelihood_field_prob 的官方 beam skipping：少数动态点或地图残点不再
+    # 拖走整批粒子；当多数光束不匹配时仍回退为完整更新，不掩盖定位丢失。
+    do_beamskip: true
+    global_frame_id: map
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 15.0
+    laser_min_range: 0.9
+    laser_model_type: likelihood_field_prob
+    max_beams: 90
+    max_particles: 2000
+    min_particles: 500
+    odom_frame_id: odom
+    pf_err: 0.05
+    pf_z: 0.99
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    robot_model_type: nav2_amcl::DifferentialMotionModel
+    save_pose_rate: 0.5
+    sigma_hit: 0.2
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    update_min_a: 0.10
+    update_min_d: 0.10
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
+    scan_topic: /scan
+
+map_server:
+  ros__parameters:
+    use_sim_time: true
+    yaml_filename: ""

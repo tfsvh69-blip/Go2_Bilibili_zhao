@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>go2_navigation</name>
+  <version>0.1.0</version>
+  <description>Go2 室内平地自主导航：Slam Toolbox 在线建图、AMCL 固定图定位、Nav2 规划控制与安全控制链。</description>
+  <maintainer email="hao@example.com">hao</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- 启动与节点编排 -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+  <exec_depend>rqt_gui</exec_depend>
+  <exec_depend>rqt_reconfigure</exec_depend>
+
+  <!-- Nav2 组件 -->
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>nav2_bt_navigator</exec_depend>
+  <exec_depend>nav2_behavior_tree</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_controller</exec_depend>
+  <exec_depend>nav2_behaviors</exec_depend>
+  <exec_depend>nav2_planner</exec_depend>
+  <exec_depend>nav2_smoother</exec_depend>
+  <exec_depend>nav2_waypoint_follower</exec_depend>
+  <exec_depend>nav2_mppi_controller</exec_depend>
+  <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
+  <exec_depend>nav2_smac_planner</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_velocity_smoother</exec_depend>
+  <exec_depend>nav2_collision_monitor</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <!-- 控制链 -->
+  <exec_depend>twist_mux</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>pointcloud_to_laserscan</exec_depend>
+
+  <!-- 定位 -->
+  <exec_depend>lidar_localization_ros2</exec_depend>
+  <exec_depend>ndt_relocalization</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <!-- 常用消息与 Python 依赖 -->
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>python3-open3d</exec_depend>
+
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_xmllint</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
