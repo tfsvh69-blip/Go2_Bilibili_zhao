@@ -196,6 +196,32 @@ ros2 run go2_navigation footprint_calibrator --verify-only
 仍会按安全约定锁停并在结束后保持锁停。验证器会等待 Polygon 与 TF 时间戳能够精确配对
 的新帧，避免把节点刚启动时 TF 缓存尚未预热误报为 footprint 失败。
 
+## 当前安全停点：幽灵障碍与近距碰撞
+
+截至 2026-08-14，阶段 0 运行时框架、阶段 1 LiDAR 盲区量化和阶段 2 Footprint
+几何各自 PASS；阶段 3 Inflation 尚未开始。用户新观察到 Global Costmap 中的异常障碍岛
+会跳位、旧格概率性消失，且标准方块靠近后代价区消失并发生接触。因此当前整套障碍安全
+门为 **FAIL**，三个 profile 继续为 `UNCALIBRATED`，暂不进入自主移动重复验收。
+
+静态审计发现两个必须先处理的链路问题：`pointcloud_to_laserscan.use_inf=true`，但
+local/global LaserScan source 的 `inf_is_valid` 仍为默认 `false`，无回波的 `+inf` 不能
+形成远端 clearing ray；现有 Collision Monitor 的 stop/decel 前缘为基座前
+`0.52/0.72 m`，却都位于已实测 LiDAR 最近可靠表面约基座前 `1.10 m` 的盲区内。
+此外当前 `inflation_radius=0.30 m` 尚未按外扩 Footprint 外接半径 `0.474 m` 标定。
+
+发现异常时先安全停车：
+
+```bash
+ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
+```
+
+下一步不是同时放大 Persistence/Inflation，而是固定 `static_map + AMCL`，依次区分
+Static Map、`map→odom` 和 ObstacleLayer；再验证 `inf_is_valid` 与 mark/raytrace 上限组成
+的 LaserScan 空射线语义组。当前三个上限都为 `15.0 m`，不能孤立开启 valid-inf，否则
+无回波替换端点可能在最远处被重新 marking。该组 PASS 后才进入 Inflation、Persistence、
+Depth 与 Collision Monitor 标定。完整证据、命令和 PASS 门见
+[全局代价图幽灵障碍与近距碰撞调查](docs/costmap_ghost_obstacle_investigation.md)。
+
 ## RViz 操作
 
 遇到机器人抖动、RViz 红项或目标不取消时，先点击 `Navigation 2 -> Cancel`。仍未停止则：

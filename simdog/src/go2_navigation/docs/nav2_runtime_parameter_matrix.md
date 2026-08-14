@@ -209,3 +209,8 @@ ros2 run go2_navigation nav_tuner --monitor-only
 
 结论：阶段 0 工具链、阶段 1 LiDAR 盲区和阶段 2 Footprint 均 PASS；Inflation、
 Persistence、Depth 和 Collision Monitor 数值仍未标定，不能把当前配置称为安全最优值。
+用户随后观察到 Global Costmap 幽灵障碍和近距方块碰撞，当前系统级安全门已改判为 FAIL。
+静态审计确认 `/scan` 使用 `+inf`，而两个 ObstacleLayer source 的 `inf_is_valid` 默认
+为 false；现有 stop/decel zone 又位于实测 LiDAR 盲区内。阶段 3 前必须先完成 clearing
+与 `map→odom` 基线，详见
+[幽灵障碍与近距碰撞调查](costmap_ghost_obstacle_investigation.md)。

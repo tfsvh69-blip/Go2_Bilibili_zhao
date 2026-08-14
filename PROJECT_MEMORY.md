@@ -16,8 +16,9 @@ Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
 SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对照）以及
 `twist_mux → velocity_smoother → collision_monitor → /cmd_vel` 安全控制链。
 全局与局部代价图的 `/scan` observation source 均已显式接受 `0–2.0 m`
-高度的障碍；移动障碍 marking、1 Hz 全局重规划、RPP 碰撞约束与 clearing
-已在 Gazebo 仿真中形成闭环。
+高度的障碍；移动障碍 marking、1 Hz 全局重规划和 RPP 碰撞约束链路已接通。但新发现
+`+inf` 空射线 clearing 不完整、Global Costmap 幽灵障碍及 Collision Monitor 区域位于
+LiDAR 盲区内，当前系统级障碍安全门为 FAIL，不能继续描述为已形成安全闭环。
 
 `go2_navigation` 现提供 `ros2 run go2_navigation nav_tuner` 统一运行时调参和监控入口。
 72 个参数别名明确区分 `LIVE`、`LIFECYCLE RELOAD` 和 `RESTART REQUIRED`；
@@ -27,6 +28,51 @@ SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对�
 local/global costmap 已使用 URDF collision 与 220 帧 CHAMP 步态联合标定的 24 顶点
 footprint，padding 为 `0.035 m`；`footprint_calibrator --verify-only` 可直接核对两张
 costmap 的实际发布轮廓。
+
+## 2026-08-14 全局代价图幽灵障碍与近距碰撞新阻塞
+
+### 用户现象与当前判定
+
+- 用户提供的连续 RViz 画面显示：Global Costmap 中出现不属于静态墙体的多块
+  lethal/inflated 障碍岛；机器人移动后新岛跳到其他位置，旧岛长时间存在后概率性消失。
+  标准方块接近机器人时其代价区消失，随后发生真实接触。
+- 阶段 0、1、2 的工具/量化/几何子门仍各自 PASS，但系统级障碍安全门改判为 **FAIL**。
+  阶段 3 Inflation 尚未开始，三个 profile 继续 `UNCALIBRATED`，阶段 7 重复移动验收
+  禁止开始。
+
+### 已确认与待实测根因
+
+- `pointcloud_to_laserscan` 配置为 `use_inf: true`，无回波 bin 输出 `+inf`；local/global
+  LaserScan source 未设置 `inf_is_valid`，Nav2 1.1.20 默认 false。官方源码表明只有
+  valid-inf callback 会把正无穷替换为 `range_max-0.0001 m` 再投影。因此当前空射线
+  clearing 链不完整，可以解释旧格为什么要等有限射线偶然穿过才消失。
+- 这不能单独解释错误端点的首次出现。截图中的墙形复制和整块跳位还可能来自
+  `map→odom` 修正；目前只有视觉证据，尚无与截图同步的 TF 数值，标为待实测而不是
+  已确认根因。
+- 阶段 1 已实测 LiDAR 正前可靠表面下限为传感器前 `0.90 m`，传感器位于
+  `base_footprint` 前约 `0.20 m`，即最近可靠表面约为基座前 `1.10 m`。现有 Collision
+  Monitor decel/stop 前缘只有 `0.72/0.52 m`；按 `0.20 m/s × 1.5 s` 计算，approach
+  加外扩 Footprint 前缘也只预测到约 `0.689 m`。三者都位于 LiDAR 盲区内，无法构成
+  可靠正前防撞闭环；D435 p99 `72.14 s` 也不能兜底。
+- 当前 `inflation_radius=0.30 m` 仍是阶段 2 明确保留的未标定值，小于外扩 Footprint
+  外接半径 `0.474 m`。它需要阶段 3 单变量实验，但不能先用它放大幽灵格来掩盖 clearing。
+
+### 后续顺序
+
+1. 固定 `static_map + AMCL`，一次只开 Static Map、LaserScan、Global Costmap，记录
+   60 s `/scan`、TF、AMCL 和 raw costmap；先区分地图污染、`map→odom` 跳变和
+   ObstacleLayer。
+2. 审计 `inf_is_valid` 与 obstacle/raytrace max 的组合。当前三者上限都为 `15.0 m`，
+   不能孤立开启 valid-inf，否则转换后的 `14.9999 m` 端点可能进入 marking。将三项作为
+   source 语义重置组，先 local 后 global，通过 Lifecycle RESET/STARTUP 或完整重启重建
+   callback；以实际删除方块验证清除上界，同时检查最远处无新障碍环。
+3. clearing 与 TF PASS 后才进入阶段 3 Inflation，再做阶段 4 Persistence A/B。
+4. 完成 D435 审计后重标定 Collision Monitor；stop 边界必须位于至少一个可靠 source
+   持续可见的位置。该门 PASS 前不做自主移动碰撞测试。
+
+完整证据等级、CLI/RViz 操作和阶段交接见
+`simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。本轮只记录和诊断，
+未修改运行参数。
 
 ## 2026-08-14 固定 AMCL 足迹显示与验证回归
 
@@ -103,8 +149,9 @@ costmap 的实际发布轮廓。
   `UNCALIBRATED`。
 - `go2_navigation` 已用 `--symlink-install` 构建；本次回归增加 2 项诊断测试后，包级结果为
   `95 tests, 0 errors, 0 failures, 0 skipped`。
-- 下一停点是阶段 3 Inflation：以标定后外扩 footprint 的外接半径为几何起点，保持
-  Planner、RPP 和速度不变，按 `0.10 m` 单变量步进；尚未开始调整。
+- 阶段 2 完成时原定下一停点是阶段 3 Inflation；后续幽灵障碍/近距碰撞已增加前置门：
+  必须先完成空射线 clearing 与 `map→odom` 稳定性验证，才以标定后外扩 footprint 的
+  外接半径为几何起点，保持 Planner、RPP 和速度不变按 `0.10 m` 单变量步进。
 
 ## 2026-08-14 激光雷达近距盲区阶段 1
 

@@ -92,6 +92,16 @@ python3 simdog/src/go2_navigation/tools/obstacle_probe.py --help
 Footprint、Inflation、停车余量与 Collision Monitor 的输入；其中正后向缝隙与
 D435 低频必须在阶段 5–6 再决定是否修正或禁用相应 source。
 
+## 后续安全阻塞
+
+阶段 1 之后的现场导航已经出现“方块靠近后 `/scan`/代价区消失，机器人继续前进并接触”
+的现象。这不推翻盲区量化 PASS，反而说明 `0.90 m` 可靠下限必须真正进入停车区设计。
+Velodyne 原点位于 `base_footprint` 前约 `0.20 m`，因此正前方最近可靠表面约为基座前
+`1.10 m`；当前 Collision Monitor decel/stop 前缘只有 `0.72/0.52 m`，均已深入
+LiDAR 盲区。阶段 6 重新标定并通过 ContactSensor 重复试验前，不得再宣称现有 zone
+能处理近距障碍。完整链路见
+[幽灵障碍与近距碰撞调查](costmap_ghost_obstacle_investigation.md)。
+
 ## 原始证据
 
 全部数据位于 `logs/blind_zone/`：

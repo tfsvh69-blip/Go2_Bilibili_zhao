@@ -925,6 +925,8 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 | Lethal Cost | 规划器认为不可穿越 | 实墙/绝对禁区 |
 | Unknown | 尚未确认安全或占用 | 没勘察过的区域 |
 | Raytracing Clearing | 激光射线穿过的空间用于清除旧障碍 | 手电筒照到空处后擦掉旧标记 |
+| Ghost Obstacle（幽灵障碍） | 实物已不在、代价图却仍保留的 lethal/inflated 格 | 白板上的旧记号没擦干净 |
+| `inf_is_valid` | 是否把 LaserScan 的 `+inf` 当作“这条射线直到最远都为空”来清图 | 手电筒没照到物体时，是否仍承认光路是空的 |
 | Collision Monitor | 规划器之后的独立速度过滤/急停 | 最终自动刹车 |
 | Slowdown Zone | 障碍进入后按比例减速 | 黄色警戒区 |
 | Stop Zone | 障碍进入后速度归零 | 红色急停线 |
@@ -932,6 +934,59 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 截图中墙边青色、紫色、红色的多圈轮廓来自打开的 costmap 及其代价值着色。**颜色受 RViz `costmap` 色表、透明度以及多个 Display 重叠影响，不能仅凭某一种颜色断言是哪一层。** 要在左侧 Displays 中一次只勾选 `Static Map`、`Global Costmap`、`Local Costmap` 来辨认。
 
 RPP 自带的路径碰撞预测和 Collision Monitor 是两层不同保护：前者帮助控制器不沿危险弧线前进，后者是不依赖规划是否正确的最终速度防线。本项目不通过关闭它们来掩盖地图或传感器问题。
+
+### 全局代价图为什么会出现跳动、复制和概率消失的障碍岛
+
+2026-08-14 的两张用户现场画面中，墙外出现了多块青色核心、紫色高代价和粉色外圈组成
+的异常岛；机器人移动后，新岛出现在别处，旧岛有时保留、有时才消失。这不是
+SmacPlanner2D 在“识别物体”：规划器只读取 Global Costmap，真正写格子的是 Static
+Layer 和 `/scan` ObstacleLayer。
+
+当前 `/scan` 用 `+inf` 表示某个方向没有回波，但 local/global source 的
+`inf_is_valid` 没有显式开启，Nav2 默认是 false。结果像白板上只允许“看到新物体时画点”，
+却不允许“确认一路为空时用板擦擦线”：有限端点会标记新障碍，无回波方向不能生成
+清除到远处的射线。机器人换位置或 `map→odom` 修正后，新端点落在新格子；旧格只有后来
+被另一条有限射线穿过时才清掉，于是肉眼看到跳动和概率消失。
+
+这项审计能解释 clearing 不及时，但尚未证明最初的错误端点来自哪里。应这样区分：
+
+1. RViz 只开 `Static Map`；异常岛仍在，说明保存的 PGM 已污染。
+2. 只开 `LaserScan`，Fixed Frame 分别选 `odom` 和 `map`；只在 `map` 中跳，说明
+   `map→odom`/AMCL/SLAM 不稳。
+3. Static Map 干净、LaserScan 稳定，但只开 `Global Costmap` 出现岛，才继续查
+   ObstacleLayer clearing。
+
+```bash
+ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
+ros2 param get /pointcloud_to_laserscan use_inf
+ros2 param get /local_costmap/local_costmap scan_layer.scan.inf_is_valid
+ros2 param get /global_costmap/global_costmap obstacle_layer.scan.inf_is_valid
+```
+
+当前预期读到 `use_inf=True`、两个 `inf_is_valid=False`。注意不能只把后者改成 true：
+当前 scan、marking 和 raytrace 最大距离都是 `15.0 m`，Nav2 会把 `+inf` 变成
+`14.9999 m`；如果 marking 上限仍为 15 m，远端点可能被重新画成障碍。实验要把
+`inf_is_valid`、`obstacle_max_range`、`raytrace_max_range` 作为同一个空射线语义组，
+先只测 local、Lifecycle reload/重启，再只测 global，且检查最远处没有新障碍环。
+不能只看参数 read-back，也不要混入 Inflation，否则每个幽灵 lethal 格都会被一起放大。
+官方语义见
+[Nav2 Obstacle Layer 参数说明](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)。
+
+### 为什么方块靠近后消失，现有急停区却没有救下来
+
+阶段 1 已实测：正前方方块表面离 Velodyne 小于 `0.90 m` 时，原始点云和 `/scan` 都是
+0% 检出。Velodyne 原点又在 `base_footprint` 前约 `0.20 m`，所以方块表面仍可靠可见的
+最近位置约是基座前 `1.10 m`。但当前 Collision Monitor 的 decel/stop 前缘只有
+`0.72/0.52 m`：障碍点要进入警戒区，必须先深入 LiDAR 盲区，几何上无法可靠触发。
+
+按当前 `0.20 m/s` 和 approach `1.5 s`，外扩 Footprint 前缘约 `0.389 m`，预测最远仅
+约 `0.389 + 0.20×1.5 = 0.689 m`，仍短于 `1.10 m` 可靠边界。D435 又因 p99 周期
+`72.14 s` 尚不能当可靠兜底。这就是“远处有代价区、靠近后消失、随后撞上”的数据链，
+不是把 stop zone 画在 RViz 中就等于急停已经有效。
+
+当前系统级安全门因此为 FAIL。在 stop zone 重新进入至少一个可靠传感器的持续可见范围、
+并通过 ContactSensor 重复试验前，不继续自主移动碰撞验收。完整阶段表与实验顺序见
+`simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。
 
 ### Local Costmap 打开后为什么仍可能一片空白
 

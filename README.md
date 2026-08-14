@@ -518,6 +518,13 @@ ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
 ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 ```
 
+当前障碍安全验收有一个明确停点：用户已观察到 Global Costmap 幽灵障碍跳位/残留，且
+标准方块进入 LiDAR 近距盲区后代价区消失并发生接触。阶段 0 调参框架、阶段 1 盲区量化、
+阶段 2 Footprint 几何分别 PASS，但系统级安全门为 **FAIL**，阶段 3 Inflation 尚未开始，
+三个 profile 仍为 `UNCALIBRATED`。现有 stop/decel zone 位于已实测 LiDAR 可靠下限以内，
+不得把“配置已存在”当作急停已验证。排障和后续门禁见
+[幽灵障碍与近距碰撞调查](simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md)。
+
 导航栈运行时，键盘遥控必须从安全链入口发布：
 
 ```bash
@@ -596,7 +603,8 @@ ros2 topic echo --once /ndt_pose
   按需使用 `LIBGL_ALWAYS_SOFTWARE=1`。
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
 - 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + RPP/MPPI 与安全链
-  已接通；在线模式已通过 12 次连续短目标。10 分钟压力、移动障碍和完整失效注入仍待完成。
+  已接通；在线模式已通过 12 次连续短目标。但新发现的幽灵障碍 clearing 与近距碰撞使
+  当前系统级安全门为 FAIL；10 分钟压力、移动障碍和完整失效注入不得提前开始。
 - 默认 `forward_rpp` 已改为 Rotation Shim、实时 TF 终点路径锁存、0.45 rad/s 开环限加速度
   定向，并提供五层只读诊断。旧实现的两个内部同 XY `±90°` 专项目标曾成功，但新锁存
   的纯旋转基线仍因 CHAMP 实体旋转增益/漂移未全部达标而失败；`stance_depth=0.0 m`

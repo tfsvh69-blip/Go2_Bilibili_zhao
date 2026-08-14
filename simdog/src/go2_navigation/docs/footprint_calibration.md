@@ -23,6 +23,12 @@
 柔性、打滑、更快步态或跌倒姿态已验收；阶段 3 开始前仍保持
 `safe/balanced/aggressive=UNCALIBRATED`。
 
+后续现场发现 Global Costmap 幽灵障碍与近距方块碰撞，使系统级安全门改判为 FAIL；
+这不推翻本阶段的几何 PASS。当前外扩 Footprint 外接半径 `0.474170 m` 仍是阶段 3
+Inflation 的几何起点，但必须先修复 ObstacleLayer clearing、排除 `map→odom` 跳变，
+否则 Inflation 只会把错误障碍格一起放大。后续顺序见
+[幽灵障碍与近距碰撞调查](costmap_ghost_obstacle_investigation.md)。
+
 ## 几何来源与算法
 
 工具从运行中的 `/robot_state_publisher.robot_description` 读取 URDF，而不是复制一份
