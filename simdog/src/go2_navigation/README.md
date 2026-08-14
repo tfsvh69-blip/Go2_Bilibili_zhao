@@ -104,7 +104,10 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 
 固定模式在 RViz 先点工具栏 `2D Pose Estimate`，再点 `Nav2 Goal`。默认
 `online_slam` 由 Slam Toolbox 从当前仿真原点建立 `map`，不需要也不应把手工初始位姿
-作为启动步骤；两种模式不要混用。
+作为启动步骤；两种模式不要混用。固定 AMCL 在初始位姿前尚未建立 `map→odom`：局部
+footprint 虽已在 `odom` 发布，但 RViz 的 Fixed Frame 是 `map`，所以绿色
+`Robot Footprint (Padded)` 暂时不可见，全局 costmap 也还未 active。这不是 polygon
+丢失；完成 `2D Pose Estimate` 并等待 `Navigation: active` 后才应运行验证工具。
 
 界面同时显示 `/scan` 与 D435 频率/年龄、scan 有效/inf/nan 数与最近距离、全局/局部
 costmap 的 lethal/inflated 格、机器人到最近 lethal 格距离、实际发布 footprint、路径长度、
@@ -182,8 +185,16 @@ ros2 run go2_navigation footprint_calibrator \
 保存或重启后可用下列命令只核对实际发布轮廓，不驱动步态：
 
 ```bash
+# static_map + AMCL 必须先在 RViz 完成 2D Pose Estimate，并确认下列两项均 active
+ros2 lifecycle get /planner_server
+ros2 lifecycle get /controller_server
 ros2 run go2_navigation footprint_calibrator --verify-only
 ```
+
+若尚无 `map→odom`，工具会直接说明绿色线为何不可见以及如何设置初始位姿；这个预检
+发生在工具接管速度前，因此不会改变原来的导航暂停状态。预检通过后，`--verify-only`
+仍会按安全约定锁停并在结束后保持锁停。验证器会等待 Polygon 与 TF 时间戳能够精确配对
+的新帧，避免把节点刚启动时 TF 缓存尚未预热误报为 footprint 失败。
 
 ## RViz 操作
 

@@ -91,6 +91,8 @@ PyYAML 折成多行转义字符串的问题；现在输入会规范化为单行 
 | Global Costmap | `[-0.4340,0.3890] × [-0.2370,0.2290] m` |
 
 验证使用每条 Polygon 自身的时间戳查询 TF，避免“最新 TF”与旧消息错时制造假误差；
+若校准器刚启动时先收到的 Polygon 早于它自身 TF Buffer 的最早记录，会继续等待一帧
+可与 TF 精确配对的新 Polygon，而不是把短暂的缓存预热报成校准失败。
 Domain 228 热更新验证中 local/global 最大逐顶点误差分别为 `4.06×10⁻⁸ m` 和
 `3.47×10⁻⁸ m`，与 Nav2
 对各顶点施加 `0.035 m` padding 的结果一致。RViz 两套配置现默认显示绿色
@@ -128,6 +130,25 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 ros2 run go2_navigation footprint_calibrator --verify-only \
   --output-dir simdog/src/go2_navigation/logs/footprint/my_run
 ```
+
+固定地图 AMCL 有一个必须先完成的前置步骤：在 RViz 顶部使用 `2D Pose Estimate` 设置
+地图内的真实位置与朝向，并等待 `planner_server`、`controller_server` 都为 `active [3]`。
+初始位姿前没有 `map→odom`，此时 local footprint 实际已在 `odom` 发布，但 RViz 的
+Fixed Frame 为 `map`，无法画出绿色轮廓；global costmap 也会等待坐标变换而不能完成
+激活。可用以下命令区分“尚未定位”与“footprint 真没发布”：
+
+```bash
+ros2 lifecycle get /planner_server
+ros2 lifecycle get /controller_server
+timeout 3s ros2 run tf2_ros tf2_echo map odom
+ros2 topic echo /local_costmap/published_footprint --once
+ros2 topic echo /global_costmap/published_footprint --once
+```
+
+正常状态是两个 lifecycle 节点均为 `active [3]`、TF 打印数值、两个 Polygon 各有
+24 个点。若 `map→odom` 未建立，校准器会给出 `2D Pose Estimate` 操作提示，并在预检
+阶段退出；由于还没有接管速度，它不会改变原来的导航暂停状态。预检通过后，验证过程
+仍会主动锁停，结束后需人工调用 `/navigation/resume`，旧目标不会续行。
 
 期望 local/global 都显示 `status=PASS`、`vertex_count=24`，逐顶点误差不超过默认
 `0.005 m`。该模式同样会锁停并且不自动 resume。

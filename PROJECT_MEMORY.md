@@ -28,6 +28,27 @@ local/global costmap 已使用 URDF collision 与 220 帧 CHAMP 步态联合标�
 footprint，padding 为 `0.035 m`；`footprint_calibrator --verify-only` 可直接核对两张
 costmap 的实际发布轮廓。
 
+## 2026-08-14 固定 AMCL 足迹显示与验证回归
+
+- 隔离 Domain 230 复现：固定地图启动但尚未发布 `/initialpose` 时，AMCL 已 active，
+  local costmap 也持续发布 24 点 `/local_costmap/published_footprint`（frame=`odom`）；
+  但 `map→odom` 不存在，planner/global costmap 卡在等待 TF，因而 RViz Fixed Frame
+  为 `map` 时看不到绿色轮廓，global costmap 参数服务也可能超时。在线 SLAM 会自动
+  建立 `map→odom`，所以没有这一步空窗。
+- 连续发布初始位姿并让 AMCL 收到后，实测 `map→odom` 建立、planner/controller 均为
+  `active [3]`，local/global published footprint 各为 24 点。这证明 polygon 配置存在，
+  肉眼差异的根因是 AMCL 初始定位尚未完成，不应通过修改 footprint 或伪造静态 TF 掩盖。
+- `footprint_calibrator` 现在先等待可配置的 `--readiness-timeout`（默认 5 s）确认
+  `map→odom`。未就绪时直接解释绿色线、global costmap 与 RViz `2D Pose Estimate` 的
+  关系；预检在速度接管前失败时不再调用 `/navigation/stop` 改变用户原有暂停状态。
+- 修复验证器启动瞬间的 TF 历史竞态：坚持使用 Polygon 自身时间戳，但会等待一帧落入
+  本节点 TF Buffer 范围的新消息，不再把 `extrapolation into the past` 当作几何失败。
+- 重建后在同一固定 AMCL 闭环中复测：初始位姿前，预检按预期以 code 2 退出，
+  `/pause_navigation` 前后均为 `true`，证明工具未额外改变状态；完成初始位姿后
+  `health_check` PASS，`--verify-only` PASS，local/global 均为 24 点，最大逐顶点误差
+  分别为 `2.36×10⁻⁸ m` 和 `3.02×10⁻⁸ m`。`go2_navigation` 包级测试现为
+  `95 passed, 0 errors, 0 failures, 0 skipped`。
+
 ## 2026-08-14 Go2 导航足迹校准阶段 2
 
 ### 发现与实际实现
@@ -80,8 +101,8 @@ costmap 的实际发布轮廓。
 - 阶段 2 门禁为 PASS，但只代表当前 Gazebo collision、CHAMP 步态及采样速度的几何
   闭环，不代表真机、跌倒姿态或更高速度已验证；三个 profile 继续保持
   `UNCALIBRATED`。
-- `go2_navigation` 已用 `--symlink-install` 构建，包级结果为
-  `93 tests, 0 errors, 0 failures, 0 skipped`。
+- `go2_navigation` 已用 `--symlink-install` 构建；本次回归增加 2 项诊断测试后，包级结果为
+  `95 tests, 0 errors, 0 failures, 0 skipped`。
 - 下一停点是阶段 3 Inflation：以标定后外扩 footprint 的外接半径为几何起点，保持
   Planner、RPP 和速度不变，按 `0.10 m` 单变量步进；尚未开始调整。
 

@@ -43,6 +43,33 @@ class _VerificationFinished(Exception):
     """仅用于让 verify-only 进入统一停车与资源释放流程。"""
 
 
+MAP_TO_ODOM_GUIDANCE = (
+    "尚未建立 map→odom。RViz 的 Fixed Frame 是 map，因此此时无法把 odom 中的"
+    "局部绿色足迹画出来，global_costmap 也不能完成激活。若使用 static_map + AMCL，"
+    "请先在 RViz 顶部点击 2D Pose Estimate，在地图中的机器人真实位置按下并拖出"
+    "朝向；等待 Navigation 和 Localization 均为 active 后，再运行 footprint_calibrator。"
+)
+
+
+def published_footprint_failure_message(
+    received_scopes: Iterable[str],
+    map_to_odom_ready: bool,
+    last_tf_error: str | None = None,
+) -> str:
+    """生成足迹等待失败的可操作诊断，不把定位未初始化误写成参数故障。"""
+
+    received = set(received_scopes)
+    missing = [scope for scope in ("local", "global") if scope not in received]
+    if not map_to_odom_ready:
+        return MAP_TO_ODOM_GUIDANCE
+    if missing:
+        return "未收到以下 published_footprint：" + ", ".join(missing)
+    message = "已收到 local/global published_footprint，但没有等到与消息时间戳匹配的 TF"
+    if last_tf_error:
+        message += f"；最后错误：{last_tf_error}"
+    return message
+
+
 @dataclass(frozen=True)
 class CollisionShape:
     """URDF 中一个 collision 几何及其相对 link 的位姿。"""
@@ -536,15 +563,38 @@ class FootprintCalibratorNode(Node):
             self.parameter_values("/robot_state_publisher", ["robot_description"])[0]
         )
 
+    def map_to_odom_ready(self) -> bool:
+        """返回全局定位坐标链是否已建立。"""
+
+        try:
+            return self._tf_buffer.can_transform("map", "odom", Time())
+        except TransformException:
+            return False
+
+    def require_map_to_odom(self, timeout: float) -> None:
+        """等待全局定位坐标链，失败时给出固定地图 AMCL 的直接操作步骤。"""
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.map_to_odom_ready():
+                return
+            time.sleep(0.05)
+        raise RuntimeError(MAP_TO_ODOM_GUIDANCE)
+
     def costmap_geometry(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for scope, node in (
             ("local", "/local_costmap/local_costmap"),
             ("global", "/global_costmap/global_costmap"),
         ):
-            footprint, padding, resolution = self.parameter_values(
-                node, ["footprint", "footprint_padding", "resolution"]
-            )
+            try:
+                footprint, padding, resolution = self.parameter_values(
+                    node, ["footprint", "footprint_padding", "resolution"]
+                )
+            except (RuntimeError, TimeoutError) as error:
+                if scope == "global" and not self.map_to_odom_ready():
+                    raise RuntimeError(MAP_TO_ODOM_GUIDANCE) from error
+                raise
             result[scope] = {
                 "footprint": footprint,
                 "points": parse_footprint_parameter(footprint),
@@ -600,28 +650,41 @@ class FootprintCalibratorNode(Node):
         if not math.isfinite(tolerance) or tolerance <= 0.0:
             raise ValueError("verification-tolerance 必须为正有限数")
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            with self._lock:
-                ready = all(
-                    scope in self._published_footprints
-                    for scope in ("local", "global")
-                )
-            if ready:
-                break
-            time.sleep(0.05)
-        if not ready:
-            raise TimeoutError("未同时收到 local/global published_footprint")
-
         results: dict[str, Any] = {}
+        last_tf_error: TransformException | None = None
         for scope in ("local", "global"):
-            with self._lock:
-                message = self._published_footprints[scope]
-            transform = self._tf_buffer.lookup_transform(
-                "base_footprint",
-                message.header.frame_id,
-                Time.from_msg(message.header.stamp),
-                timeout=Duration(seconds=2.0),
-            )
+            message: PolygonStamped | None = None
+            transform = None
+            # Polygon 与 TF 都是实时流。新建的校准器可能先收到一帧 Polygon，
+            # 其时间戳却早于本节点 TF Buffer 的最早记录；继续等待新帧，不能把
+            # 这个正常的缓存预热过程误判成 footprint 参数失败。
+            while time.monotonic() < deadline:
+                with self._lock:
+                    message = self._published_footprints.get(scope)
+                if message is None:
+                    time.sleep(0.05)
+                    continue
+                try:
+                    transform = self._tf_buffer.lookup_transform(
+                        "base_footprint",
+                        message.header.frame_id,
+                        Time.from_msg(message.header.stamp),
+                        timeout=Duration(seconds=0.2),
+                    )
+                    break
+                except TransformException as error:
+                    last_tf_error = error
+                    time.sleep(0.05)
+            if message is None or transform is None:
+                with self._lock:
+                    received = tuple(self._published_footprints)
+                raise TimeoutError(
+                    published_footprint_failure_message(
+                        received,
+                        self.map_to_odom_ready(),
+                        str(last_tf_error) if last_tf_error else None,
+                    )
+                )
             translation = (
                 transform.transform.translation.x,
                 transform.transform.translation.y,
@@ -846,6 +909,12 @@ def create_parser() -> argparse.ArgumentParser:
         default=0.005,
         help="发布足迹逐顶点允许误差，默认 0.005 m",
     )
+    parser.add_argument(
+        "--readiness-timeout",
+        type=float,
+        default=5.0,
+        help="等待 map→odom 与导航全局坐标链的秒数，默认 5.0",
+    )
     parser.add_argument("--output-dir", type=Path)
     return parser
 
@@ -859,6 +928,7 @@ def _validated_arguments(arguments: argparse.Namespace) -> None:
         arguments.forward_speed,
         arguments.turn_speed,
         arguments.lateral_speed,
+        arguments.readiness_timeout,
     )
     if any(not math.isfinite(value) or value <= 0.0 for value in positive):
         raise ValueError("时长、频率和速度必须为正有限数")
@@ -895,12 +965,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
     result_code = 0
+    safety_engaged = False
     try:
         urdf = node.robot_description()
         shapes = parse_collision_shapes(urdf)
         shapes_by_link: dict[str, list[CollisionShape]] = {}
         for shape in shapes:
             shapes_by_link.setdefault(shape.link, []).append(shape)
+        node.require_map_to_odom(arguments.readiness_timeout)
         geometry = node.costmap_geometry()
         resolution = float(geometry["local"]["resolution"])
         print(
@@ -911,6 +983,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # 先取消任何旧目标并确认零速，再恢复输入以允许
         # 本工具通过 /cmd_vel_teleop 驱动；不绕过 mux/smoother/collision monitor。
+        safety_engaged = True
         node.trigger("/navigation/stop")
         node.wait_for_pause(True)
         node.command_for((0.0, 0.0, 0.0), 0.5)
@@ -1018,11 +1091,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         result_code = 2
     finally:
         try:
-            node.command_for((0.0, 0.0, 0.0), 1.0)
-            node.trigger("/navigation/stop")
-            node.wait_for_pause(True)
-            node.wait_for_zero_velocity()
-            print("导航已锁停；校准后不自动恢复，也不续行旧目标。")
+            if safety_engaged:
+                node.command_for((0.0, 0.0, 0.0), 1.0)
+                node.trigger("/navigation/stop")
+                node.wait_for_pause(True)
+                node.wait_for_zero_velocity()
+                print("导航已锁停；校准后不自动恢复，也不续行旧目标。")
+            else:
+                print("预检未通过；工具尚未接管速度，也未改变导航暂停状态。")
         except (RuntimeError, TimeoutError) as error:
             print(f"停车警告：{error}")
             result_code = 2

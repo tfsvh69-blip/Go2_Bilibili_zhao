@@ -875,6 +875,13 @@ local/global costmap。
 却到 `-0.399 m`；新轮廓补上后方漏区。新图前方反而从旧的过度保守值收回到 D435
 实际外壳附近，所以“顶点更多”不等于盲目变大，而是每个方向更符合实体。
 
+固定地图 AMCL 刚启动时“暂时没有绿色线”有一个正常分支：AMCL 还不知道狗在地图的
+哪里，所以尚未发布 `map→odom`。local costmap 已经在 `odom` 中发布绿色轮廓的数据，
+但 RViz 的 Fixed Frame 是 `map`，就像拿着一张没有对准地图的透明描图纸，暂时不知道
+该把轮廓叠在哪里；global costmap 也会停在等待 TF 的激活步骤。此时不要改 footprint
+参数。在 RViz 顶部点击 `2D Pose Estimate`，在地图真实位置按下并拖出狗头方向，等待
+`Navigation: active` 后，绿色线才应出现。
+
 重复校准前先取消导航目标，并确保机器人周围至少有 `2 m` 空地：
 
 ```bash
@@ -883,6 +890,7 @@ ros2 run go2_navigation footprint_calibrator \
   --output-dir simdog/src/go2_navigation/logs/footprint/my_run
 
 # 参数保存或重启后只核对发布轮廓，不让机器人走四种步态
+# 固定 AMCL 必须先完成 2D Pose Estimate，并等 Navigation active
 ros2 run go2_navigation footprint_calibrator --verify-only
 ```
 
@@ -890,6 +898,9 @@ ros2 run go2_navigation footprint_calibrator --verify-only
 `recommended_footprint`、`recommended_padding_m` 和结果目录。工具发出的速度只走
 `/cmd_vel_teleop → twist_mux → velocity_smoother → collision_monitor → /cmd_vel`；若
 提示“最终速度未证明命令落地”，先排查安全锁和速度链，不能改成直接发布 `/cmd_vel`。
+若提示 `尚未建立 map→odom`，按提示先完成初始定位；这是定位前置条件，不是足迹参数
+损坏。该预检失败发生在速度接管前，不会改变导航暂停状态。若初始定位已完成，验证器会
+等待一帧与 TF 时间戳可精确配对的新 Polygon，避免把刚启动时 TF 缓存预热误报为失败。
 结束后导航保持锁停且旧目标不会续行，确认 RViz 绿色轮廓和机器人投影一致后再执行：
 
 ```bash

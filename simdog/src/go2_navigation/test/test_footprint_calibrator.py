@@ -7,6 +7,7 @@ import pytest
 
 from go2_navigation.footprint_calibrator import (
     CollisionShape,
+    MAP_TO_ODOM_GUIDANCE,
     calibration_statistics,
     convex_hull,
     footprint_string,
@@ -15,6 +16,7 @@ from go2_navigation.footprint_calibrator import (
     parse_footprint_parameter,
     polygon_area,
     project_shape,
+    published_footprint_failure_message,
     transform_planar_points,
 )
 
@@ -133,3 +135,22 @@ def test_transform_planar_points_applies_runtime_tf_back_to_base_frame():
         (0.0, 0.0, half, half),
     )
     assert points == pytest.approx([(2.0, 4.0), (1.0, 3.0)])
+
+
+def test_missing_map_transform_explains_green_line_and_initial_pose_action():
+    message = published_footprint_failure_message(["local"], False)
+    assert message == MAP_TO_ODOM_GUIDANCE
+    assert "Fixed Frame" in message
+    assert "2D Pose Estimate" in message
+    assert "Navigation 和 Localization 均为 active" in message
+
+
+def test_warmed_map_transform_distinguishes_missing_topic_from_tf_history():
+    assert published_footprint_failure_message(["local"], True) == (
+        "未收到以下 published_footprint：global"
+    )
+    message = published_footprint_failure_message(
+        ["local", "global"], True, "extrapolation into the past"
+    )
+    assert "消息时间戳匹配的 TF" in message
+    assert "extrapolation into the past" in message
