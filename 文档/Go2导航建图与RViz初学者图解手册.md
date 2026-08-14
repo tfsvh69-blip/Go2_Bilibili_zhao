@@ -738,6 +738,50 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 
 RPP 自带的路径碰撞预测和 Collision Monitor 是两层不同保护：前者帮助控制器不沿危险弧线前进，后者是不依赖规划是否正确的最终速度防线。本项目不通过关闭它们来掩盖地图或传感器问题。
 
+### Local Costmap 打开后为什么仍可能一片空白
+
+正常的 Local Costmap 是跟随狗移动的 `5×5 m` 小窗口，数据来自 `/scan` 和
+`/depth/color/points`，经过 Obstacle Layer 标记/清除后再由 Inflation Layer 生成障碍周围
+的渐变代价。它像“狗身边随身携带的一块透明方格纸”，不会扩展固定 `/map`。观察时先把
+RViz 放大到机器人附近，并且一次只打开 `Local Costmap`；如果同时打开 Static Map 和
+Global Costmap，同一高度的半透明图层可能让局部窗口很难辨认。
+
+“Display 已勾选但没有任何障碍颜色”应按下面顺序排查：
+
+```bash
+# 1. 控制器 active 才会运行它内部的 Local Costmap
+ros2 lifecycle get /controller_server
+
+# 2. 原始二维激光必须持续到达
+ros2 topic hz /scan
+
+# 3. 两个值都应为 2.0；0.0 会拒绝高于地面的全部雷达端点
+ros2 param get /local_costmap/local_costmap scan_layer.scan.max_obstacle_height
+ros2 param get /global_costmap/global_costmap obstacle_layer.scan.max_obstacle_height
+
+# 4. 有障碍标记/清除时应看到更新
+ros2 topic hz /local_costmap/costmap_updates
+```
+
+Nav2 Humble 把每个 observation source 的 `max_obstacle_height` 默认设为 `0.0 m`，而不是
+自动继承外层 Obstacle Layer 的 `2.0 m`。本项目雷达端点转换到 `odom` 后约在
+`z=0.323 m`，所以漏配 source 级参数时，订阅关系和 `/scan` 都正常，点却在写入代价图前
+被全部过滤。这是“链路接上了插头，但门槛把每个数据都退回”的典型情况。当前全局和局部
+`/scan` source 均显式使用 `max_obstacle_height=2.0 m`；值太小会漏障碍，值过大则可能把
+不希望投影到二维平面的高处回波也标成障碍。依据见
+[Nav2 Obstacle Layer 参数说明](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)
+与 [Humble ObstacleLayer 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_costmap_2d/plugins/obstacle_layer.cpp)。
+
+RPP 是路径追踪控制器，不会另发一条“局部路径”。RViz 的蓝色
+`Controller Path (Smoothed)=/received_global_plan` 仍是全局路径；RPP 使用 Local Costmap
+判断前向追踪弧能否安全执行，行为树在终点 `0.30 m` 锁存区外以 `1 Hz` 让
+SmacPlanner2D 更新绿色 `/plan`。因此在路径前方约 `1 m` 加入可绕行障碍时，正确现象是：
+
+1. Local/Global Costmap 出现致命格与膨胀圈；
+2. RPP 必要时先减速或停车；
+3. 绿色 `/plan` 最迟数秒内改道，蓝色控制器路径随后接收新计划；
+4. 若通道被完全封死，系统安全停车并报告规划失败，而不是穿过障碍。
+
 ## 12. 速度链与四足执行
 
 ```text
@@ -866,6 +910,7 @@ ros2 control list_controllers
 | 走一下停一下 | `/pause_navigation`、Collision Monitor、速度断流 | `ros2 topic echo /pause_navigation` |
 | 空地有大量黑点 | 地图投影噪声或地面/自体点 | 分别只开 Static Map 和 `/scan` 对比 |
 | 路径贴墙/绕很远 | inflation 和障碍层代价 | 单独打开 Global Costmap |
+| Local Costmap 勾选后仍空白 | `/scan` 断流、source 高度门槛或图层重叠 | 查 `/scan` Hz 和 `scan.max_obstacle_height`，再只开 Local Costmap |
 | 目标点点不了地图外 | 固定图/门禁拒绝未知区 | 切在线 SLAM 扩图，或重新采完整地图 |
 | `Feedback: aborted` | 规划、控制、进度或节点故障之一 | 看 `ros2 launch` 终端中 action 失败原因 |
 | `Localization: inactive` | 固定 AMCL manager 未 active，或当前是在线 SLAM 模式 | 先确认 `navigation_mode` |

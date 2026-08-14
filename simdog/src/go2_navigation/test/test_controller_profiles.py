@@ -174,9 +174,18 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
     assert collision["scan"]["enabled"] is True
     assert collision["d435"]["topic"] == "/depth/color/points"
     assert collision["d435"]["enabled"] is True
+    global_costmap = document["global_costmap"]["global_costmap"][
+        "ros__parameters"]
+    global_scan = global_costmap["obstacle_layer"]["scan"]
+    assert global_scan["max_obstacle_height"] == 2.0
+    assert global_scan["marking"] is True
+    assert global_scan["clearing"] is True
     local = document["local_costmap"]["local_costmap"]["ros__parameters"]
     assert local["robot_base_frame"] == "base_footprint"
     assert local["scan_layer"]["scan"]["data_type"] == "LaserScan"
+    assert local["scan_layer"]["scan"]["max_obstacle_height"] == 2.0
+    assert local["scan_layer"]["scan"]["marking"] is True
+    assert local["scan_layer"]["scan"]["clearing"] is True
     assert local["d435_layer"]["d435"]["topic"] == "/depth/color/points"
 
 

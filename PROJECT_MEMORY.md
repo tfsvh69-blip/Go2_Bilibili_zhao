@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-更新时间：2026-08-13
+更新时间：2026-08-14
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
@@ -15,6 +15,63 @@ Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
 定位。`lidar_ndt` 通过二维全局 EKF、`ndt_cuda` 作为实验后端保留。两种模式都复用
 SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对照）以及
 `twist_mux → velocity_smoother → collision_monitor → /cmd_vel` 安全控制链。
+全局与局部代价图的 `/scan` observation source 均已显式接受 `0–2.0 m`
+高度的障碍；移动障碍 marking、1 Hz 全局重规划、RPP 碰撞约束与 clearing
+已在 Gazebo 仿真中形成闭环。
+
+## 2026-08-14 动态障碍代价图链路修复
+
+### 现象、数据链与根因
+
+- 肉眼现象是 RViz 已勾选 `Local Costmap` 仍空白，Gazebo 在现有路径上加入
+  障碍后也看不到绕行。现场已确认 `controller_server`、`planner_server` 均为
+  lifecycle `active`，全局和局部 obstacle layer 也都在订阅 `/scan`，因此不是
+  RViz 复选框、节点或插件未启动。
+- 修复前 `/scan` 有 428 个有限量测，其中 164 个在 2.5 m 内；但两个 source 层
+  `scan.max_obstacle_height` 运行值都是 `0.0 m`，而 `odom -> velodyne` 高度约
+  `0.323 m`，所以所有激光观测都被高度门槛过滤。`/local_costmap/get_costmap`
+  因而返回 10000 个全零格。将同一帧 scan 以 `base_footprint` 的 `z=0`
+  对照重发后，立即出现 117 个致命障碍格和完整膨胀梯度，证明根因是
+  source 高度门槛。
+- Nav2 Humble 的外层 obstacle layer `max_obstacle_height` 默认为 `2.0 m`，但不会
+  级联给各 observation source；[source 级参数文档](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)
+  和 [Humble `obstacle_layer.cpp`](https://github.com/ros-navigation/navigation2/blob/humble/nav2_costmap_2d/plugins/obstacle_layer.cpp)
+  均显示 source 级默认值是 `0.0 m`。上游 Navigation2 采用 Apache-2.0，本轮只显式配置已有参数，未复制上游代码。
+
+### 实际实现与可观察性
+
+- `global_costmap.obstacle_layer.scan` 与 `local_costmap.scan_layer.scan` 都显式设置
+  `max_obstacle_height: 2.0`；`marking/clearing`、`5×5 m` rolling window、RPP、碰撞
+  保护和终点 `0.30 m` 锁存区都保持不变。配置回归测试锁定两个 source
+  的高度、marking 与 clearing，防止以后只改外层参数。
+- 文档已补充 RViz 操作：放大机器人附近，只保留 `Local Costmap`，暂时关闭
+  `Static Map` 和 `Global Costmap` 避免覆盖，再通过 lifecycle、`/scan` 频率、
+  source 高度参数和 costmap update 逐层排查。
+- RPP 不发布额外的“局部路径”；`/received_global_plan` 是交给控制器的平滑全局
+  路径。RPP 用 Local Costmap 预测追踪弧上的碰撞，行为树在锁存区外继续以
+  1 Hz 调用 SmacPlanner2D 重算 `/plan`。
+
+### 已实测
+
+- 独立 Domain 190 冷启动固定 AMCL 仿真后，两个 source 参数均回读为
+  `2.0 m`，`/scan` 约 `7.25 Hz`。局部代价图为 `100×100`，格子统计从
+  修复前 `{0: 10000}` 变为含 212 个致命障碍格与多级膨胀梯度。
+- 把 `0.55×0.80×1.00 m` 障碍放到原路径前方约 `1.2 m` 处：局部致命格从
+  319 增至 409，全局致命格从 3940 增至 4058；第一条新 `/plan` 在
+  `1.251 s` 内到达，后续路径与障碍中心的最小距离从 `0.00 m` 增至
+  `0.712–0.785 m`。8 秒观测中机器人中心与障碍最小距离为 `1.122 m`，
+  随后正常取消测试目标。
+- 独立 clearing 实验在障碍中心 `0.45 m` 半径内读取全局代价图：放置前
+  252 个格全为自由，放置后出现 28 个致命格及膨胀梯度，删除模型后
+  `2.5 s` 内恢复为 252 个自由格。
+- GUI 模式的独立 Domain 191 实测 `/depth/color/points` 发布者为
+  `GazeboRealsenseNode`，有效数据频率约 `1.24–2.46 Hz`。D435 继续作为近场补充，
+  本轮主闭环仍以已验证的 Velodyne `/scan` 为准，未关闭任何安全源。
+- `pointcloud_to_laserscan`、`go2_navigation_bt_plugins`、`go2_navigation` 重新构建
+  成功；`colcon test-result --verbose` 为 `196 tests, 0 errors, 0 failures, 6 skipped`。
+- 发布检查点已作为提交 `82e1e759db142704f0b6114831afc4510f90908b`
+  和注解标签 `V1.3.0` 推送；标签仅表示“可以实现基本的基于全局规划器的导航”，
+  动态障碍修复位于该标签之后。
 
 ## 2026-08-12 建图、定位与导航抖动修复
 

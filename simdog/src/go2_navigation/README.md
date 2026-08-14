@@ -100,6 +100,34 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 原始 Velodyne 点云、Global Costmap 和 Local Costmap 默认关闭以降低 RViz 负载。排查障碍时
 按需勾选；代价图会动态变化，但它们不是建图结果。
 
+### Local Costmap 已勾选但仍空白
+
+Local Costmap 是以机器人为中心的 `5×5 m` 滚动窗口，不是另一张会扩大的地图。先在
+RViz 放大机器人附近，并暂时只保留 `Local Costmap`，关闭 `Static Map` 和
+`Global Costmap`，避免多个 Map Display 在同一平面相互覆盖。随后检查：
+
+```bash
+ros2 lifecycle get /controller_server
+ros2 topic hz /scan
+ros2 param get /local_costmap/local_costmap scan_layer.scan.max_obstacle_height
+ros2 param get /global_costmap/global_costmap obstacle_layer.scan.max_obstacle_height
+ros2 topic hz /local_costmap/costmap_updates
+```
+
+预期控制器为 `active [3]`、`/scan` 持续发布，两个 source 级高度上限均为 `2.0`，
+且局部代价图有更新。Nav2 Humble 的 `<obstacle layer>.<data source>.max_obstacle_height`
+默认是 `0.0 m`，它不会继承外层 ObstacleLayer 的 `2.0 m`。若这里回读为 `0.0`，
+位于雷达实际高度的 LaserScan 端点会在进入代价图前被全部过滤，表现就是
+“话题和插件都存在，但局部图全空白”。上游依据见
+[Obstacle Layer 参数说明](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)
+与 [Nav2 Humble 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_costmap_2d/plugins/obstacle_layer.cpp)。
+
+默认 RPP 不生成另一条可视化“局部路径”。`/received_global_plan` 是交给控制器的平滑
+全局路径；RPP 用 Local Costmap 预测当前追踪弧是否碰撞，行为树则在终点 `0.30 m`
+锁存区外以 `1 Hz` 重新发布 `/plan`。动态障碍测试应把障碍放在机器人前方至少约
+`1 m` 且有绕行空间的位置：正常现象是局部图先标记障碍，随后全局路径在约 1 秒内改变；
+通道完全封死时应安全减速或停车，而不是继续撞击。
+
 ## 感知、TF 与控制链
 
 VLP-16 水平切片由 `pointcloud_to_laserscan` 统一生成 `/scan`。AMCL、Slam Toolbox、

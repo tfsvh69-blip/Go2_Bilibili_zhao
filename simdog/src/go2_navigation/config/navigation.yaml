@@ -255,6 +255,9 @@ global_costmap:
         scan:
           topic: /scan
           data_type: "LaserScan"
+          # Humble 的 observation source 默认 max_obstacle_height=0.0，
+          # 不会继承外层 ObstacleLayer 的 2.0；必须覆盖才能接收高于地面的雷达端点。
+          max_obstacle_height: 2.0
           obstacle_max_range: 15.0
           raytrace_max_range: 15.0
           marking: True
@@ -294,6 +297,9 @@ local_costmap:
         scan:
           topic: /scan
           data_type: "LaserScan"
+          # /scan 端点转换到 odom 后位于雷达实际高度；显式覆盖 source 级
+          # 0.0 m 默认值，否则局部代价图会保持全空闲。
+          max_obstacle_height: 2.0
           obstacle_max_range: 15.0
           raytrace_max_range: 15.0
           marking: True
