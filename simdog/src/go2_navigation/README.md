@@ -144,6 +144,23 @@ multicast 的提示只表示当前仿真被限制在本机回环接口，不是�
 [运行时参数能力矩阵](docs/nav2_runtime_parameter_matrix.md)。标准 `rqt_reconfigure` 仍保留为
 辅助 GUI，但不负责能力判断、reload、效果验证、实验记录或安全保存。
 
+## Gazebo 近距障碍探针
+
+阶段 1 新增可重复的红色方块探针，使用 Gazebo 标准实体服务和
+ContactSensor，将原始 Velodyne、`/scan`、D435 与真实接触分开记录。仿真导航
+健康后可执行：
+
+```bash
+ros2 run go2_navigation obstacle_probe --sensors scan,velodyne \
+  --replace-existing --output-dir /tmp/go2_blind_zone
+```
+
+工具会主动停止导航、等待 `/cmd_vel` 归零，实验后不续行旧目标。默认每个距离
+3 组×20 帧，不要在正常导航中随意加 `--no-stop-navigation`。2026-08-14 实测得到
+正前方可靠下限 0.90 m、左右 1.00 m；`gpu_ray` 在正后方 ±π 存在拼接缝。
+D435 频率与误差尚不满足正式样本门禁，不得当作已验证安全 source。完整定义、
+方向/高度对照和 CSV 字段见[激光雷达近距盲区验证](docs/lidar_blind_zone_validation.md)。
+
 ## RViz 操作
 
 遇到机器人抖动、RViz 红项或目标不取消时，先点击 `Navigation 2 -> Cancel`。仍未停止则：

@@ -1,0 +1,36 @@
+{
+  "run_id": "blind_zone_20260814_131438",
+  "status": "complete",
+  "distance_definition": "配置的传感器原点（默认 velodyne）到方块前表面的法向距离",
+  "distances_m": [
+    1.2
+  ],
+  "probe_angle_deg": 179.0,
+  "box_size_m": {
+    "depth": 0.3,
+    "width": 0.3,
+    "height": 0.5
+  },
+  "sensor_origin": {
+    "entity": "go2::base_link",
+    "offset_xyz_m": [
+      0.2,
+      0.0,
+      0.1177
+    ]
+  },
+  "sensors": [
+    "scan",
+    "velodyne"
+  ],
+  "groups": 3,
+  "frames_per_group": 20,
+  "detection_rate_threshold": 0.95,
+  "maximum_abs_error_p95_m": 0.05,
+  "reliable_detection_min_distance_m": {
+    "scan": null,
+    "velodyne": null
+  },
+  "summary_rows": 6,
+  "frame_rows": 120
+}

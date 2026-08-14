@@ -818,6 +818,40 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
   `rcl_shutdown already called`：这是旧版 `nav_tuner` 的足迹订阅/重复退出问题；当前版已
   分别改用 volatile QoS 和 `try_shutdown()`。若还出现，重新构建包并重新加载环境。
 
+### 10.2 障碍探针：“话题在发”不等于“近处看得见”
+
+`obstacle_probe` 像一把能自动移动、并自带“碰到了”开关的标尺。它通过 Gazebo
+标准服务把红色方块放到指定距离，同时记录 `/velodyne_points`、`/scan`、
+`/depth/color/points` 和 ContactSensor。因此可以区分“雷达没看见”、“转换节点漏了”
+与“机器人真的碰上了”。
+
+| 名词/现象 | 数据来源 | 正常含义 | 异常表现 | 可观察验证 |
+|---|---|---|---|---|
+| `reliable_detection_min_distance` | 三组帧级 CSV | 连续三组检测率≥95%、误差 p95≤5 cm 的最小距离 | 只有一次看到就声称可靠 | 查看 `lidar_blind_zone_summary.csv` 的 `pass` |
+| 红色方块 | Gazebo 动态实体 | 位置回读误差≤1 cm | 被物理接触推开后仍按请求距离算 | Gazebo 肉眼观察+工具回读 |
+| `contact_events` | `/go2_obstacle_probe/contacts` | 未碰撞时为 0 | 雷达 0% 但 contact 持续增加 | CSV 的 `contact_events_in_group` |
+| 正后方缝隙 | 原始点云与 `/scan` | 170° 方块可见 | 175–180° 方块两条数据链都漏掉 | RViz 打开 `Velodyne Points`、`LaserScan` 对照 |
+| D435 帧率 | `/depth/color/points` | 周期稳定且能支撑 timeout | 本轮约 0.4 Hz，p99 甚至数十秒；Collision Monitor 因时间戳落后 2–6 s 而忽略 source | `ros2 topic hz /depth/color/points`；查看 `collision_monitor` 警告 |
+
+在导航仿真已启动的新终端执行：
+
+```bash
+source scripts/setup_simdog.bash
+ros2 run go2_navigation obstacle_probe --sensors scan,velodyne \
+  --replace-existing --output-dir /tmp/go2_blind_zone
+```
+
+正常终端会先显示“导航已安全锁停”，然后逐距离打印三组检测率。结束后旧
+导航目标不会续行；确认 Gazebo 内探针已删除、导航健康后，才手动执行
+`/navigation/resume` 并下发新目标。若看到“`/set_entity_state` 不可用”，表示运行的
+world 没有 `gazebo_ros_state` 插件，或尚未重启 Gazebo；不要跳过位置回读继续测。
+
+2026-08-14 的已实测结果是：标准方块正前方可靠下限为 0.90 m，左右为
+1.00 m；0.80 m 以内不能指望该 LiDAR。正后方还有 `gpu_ray` 拼接缝，D435
+也尚未满足正式重复样本。所以在后续安全标定前，不应把“话题存在”当成
+“近距已覆盖”。详细 CSV、方向与障碍厚度对照见
+`simdog/src/go2_navigation/docs/lidar_blind_zone_validation.md`。
+
 ## 11. Costmap、Footprint 和碰撞保护
 
 | 名词 | 解释 | 比喻 |

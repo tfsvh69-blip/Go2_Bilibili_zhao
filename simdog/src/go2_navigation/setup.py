@@ -66,6 +66,7 @@ setup(
             "safety_supervisor = go2_navigation.safety_supervisor:main",
             "simulation_odom = go2_navigation.simulation_odom:main",
             "nav_tuner = go2_navigation.nav_tuner:main",
+            "obstacle_probe = go2_navigation.obstacle_probe:main",
         ],
     },
 )

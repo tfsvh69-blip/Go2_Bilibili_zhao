@@ -22,6 +22,60 @@ SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对�
 `go2_navigation` 现提供 `ros2 run go2_navigation nav_tuner` 统一运行时调参和监控入口。
 72 个参数别名明确区分 `LIVE`、`LIFECYCLE RELOAD` 和 `RESTART REQUIRED`；
 `safe/balanced/aggressive` 在完整安全验收前保持 `UNCALIBRATED`。
+可重复障碍探针可以用 Gazebo 标准实体服务移动带 ContactSensor 的方块，
+并同步采集 `/velodyne_points`、`/scan`、D435 和接触真值。
+
+## 2026-08-14 激光雷达近距盲区阶段 1
+
+### 发现与实际实现
+
+- 阶段 0 停点后，用户已在 RViz 亲自确认“设置 AMCL 初始位姿、下发导航
+  目标、热调 RPP 速度”三项可用，因此阶段 0 用户复核为 PASS。
+- 新增 `obstacle_probe`及源码 wrapper。工具使用 `/spawn_entity`、
+  `/set_entity_state`、`/get_entity_state`、`/delete_entity` 和 Gazebo ROS bumper，
+  先停止导航并等待最终 `/cmd_vel` 归零，实验后不续行旧目标。
+  world 新增官方 `gazebo_ros_state` WorldPlugin，没有新增自定义消息或服务。
+- Gazebo 会把 Go2 固定关节合并进 `base_link`，因此工具使用
+  `go2::base_link + (0.20,0,0.1177) m` 还原 Velodyne 原点，每次移动后回读位置。
+  方块是禁用重力的 kinematic 模型；static 模型被服务移动后 `gpu_ray` 不会稳定看到，
+  所以没有沿用该方案。
+- Humble `sensor_msgs_py.read_points_numpy()` 会要求 VLP-16 含 `uint16 ring` 的全部
+  字段同类型，工具改为 `read_points()` 只取结构化 xyz；高度窗额外余量限为
+  2 cm，避免把距雷达约 0.323 m 的地面误当探针。
+
+### 已实测数据与原理
+
+- 隔离 Domain 227 中，正前方 12 个距离每个 3 组×20 帧；原始点云与
+  `/scan` 各 720 帧。1.20/1.10/1.00/0.90 m 三组均为 100%，0.80 m 至
+  实际 0.153 m 三组均为 0%。正前方可靠检测下限为 0.90 m。
+- `/scan` 帧间隔 p50/p95/p99 为 0.158/0.354/0.480 s，原始 Velodyne 为
+  0.158/0.338/0.484 s。在 0.90 m，三组中最大距离误差 p95 分别为
+  0.62 cm 和 0.45 cm。0.153 m 组产生 442 个接触事件。
+- xacro 中 `gpu_ray` 与 Velodyne plugin 的最小量程都是 0.9 m；原始点云与
+  `pointcloud_to_laserscan` 派生数据同时从 100% 降为 0%，证明正前方盲区主因
+  是量程下限，不是 `-0.05..0.10 m` 二维切片或 TF。
+- 左右 90° 在 0.90 m 检测率仍为 100%，但距离误差 p95 超过 5 cm，
+  可靠下限因此为 1.00 m。1.20 m 处 170° 三组均为 100%，175/179/180°
+  三组均为 0%，确认 `gpu_ray` 在 ±π 有正后方拼接缝。
+- 1.00 m 处的 0.10 m 垂直厚度三组均为 100%，0.02 m 仅 55–65%；
+  原始点云与 `/scan` 趋势一致，表明这是 VLP-16 垂直角采样限制。
+- D435 小样本仅 1 组×3 帧；帧间隔 p50/p95/p99 为 12.34/64.77/72.14 s，
+  1.20 m 距离误差 p95 为 6.21 cm。这不满足 3 组×20 帧门禁，本阶段禁止
+  将 D435 宣称为可靠盲区 source。同次运行中 Collision Monitor 也因 D435
+  时间戳落后 2–6 s 而明确忽略该 source，这是阶段 5–6 必须处理的安全风险。
+
+### 验证、门禁与下一步
+
+- 正式数据保存在 `go2_navigation/logs/blind_zone/`，帧级 CSV、组级 CSV 与
+  JSON 可交叉复核。标准方块距离量化、方向、垂直厚度和接触真值链均已
+  形成可重复闭环，阶段 1 门禁为 PASS。
+- `go2_config + go2_navigation` 已通过 `--symlink-install` 构建；`go2_navigation`
+  包级测试为 83 项全部通过，0 errors、0 failures、0 skipped，两个 XML
+  与 Python flake8 检查通过。
+- PASS 只表示“盲区已被如实量出”，不是“传感器无盲区”。本阶段不修改
+  `range_min`、RPP、Inflation 或 Collision Monitor。
+- 下一停点是阶段 2 Footprint：从 URDF collision 几何与实际步态样本生成凸包，
+  不再沿用未校准的手写多边形。
 
 ## 2026-08-14 Nav2 运行时安全调参与监控阶段 0
 

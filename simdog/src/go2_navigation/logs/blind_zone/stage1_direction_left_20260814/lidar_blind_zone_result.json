@@ -1,0 +1,20 @@
+{
+  "run_id": "blind_zone_20260814_130803",
+  "status": "complete",
+  "distance_definition": "velodyne 原点到方块前表面的法向距离",
+  "distances_m": [
+    1.0,
+    0.9,
+    0.8
+  ],
+  "groups": 3,
+  "frames_per_group": 20,
+  "detection_rate_threshold": 0.95,
+  "maximum_abs_error_p95_m": 0.05,
+  "reliable_detection_min_distance_m": {
+    "scan": 0.9997510571788476,
+    "velodyne": 0.9997510571788476
+  },
+  "summary_rows": 18,
+  "frame_rows": 360
+}
