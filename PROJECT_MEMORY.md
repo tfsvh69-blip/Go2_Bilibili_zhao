@@ -79,6 +79,12 @@ SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对�
   `/scan.range_min=0.9 m` 都只列为后续调查线索，不把“已配置”描述为冗余已验证。
 - 阶段 0 门禁为 PASS；下一停点是阶段 1 的可重复 Gazebo 障碍探针与近距盲区量化，
   尚未开始。
+- 用户复核发现旧版 `nav_tuner` 以 transient-local 订阅 Humble 的 volatile
+  `published_footprint`，导致 QoS 警告和足迹面板为空；同时 SIGINT 已关闭 rcl context 后，
+  finally 再调用 `shutdown()` 会抛出 `rcl_shutdown already called`。现已将 footprint 订阅
+  改为 reliable + volatile，退出改用 `try_shutdown()`，并容错不支持 `curs_set()` 的 IDE
+  终端。独立 Domain 224 固定 AMCL 复测收到 local/global 各 4 个 footprint 顶点，无 QoS
+  警告，交互界面 Ctrl+C 正常以状态 0 退出。
 
 ## 2026-08-14 动态障碍代价图链路修复
 

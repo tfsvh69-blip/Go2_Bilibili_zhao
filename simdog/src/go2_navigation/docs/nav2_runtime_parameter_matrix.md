@@ -192,6 +192,9 @@ ros2 run go2_navigation nav_tuner --monitor-only
 - **已实测 RESTART REQUIRED：**尝试 `set structure.replan_frequency 2.0` 被拒绝并以状态 2
   退出，没有修改 BT。
 - **已实测控制出口：**`/cmd_vel` 只有 `/collision_monitor` 一个 publisher。
+- **用户复核后回归：**修正 `published_footprint` durability 后，Domain 224 固定 AMCL
+  快照同时收到 local/global 各 4 个足迹顶点且不再报告 QoS 不兼容；交互界面通过
+  `try_shutdown()` 在 Ctrl+C 后以状态 0 退出。
 - **待后续实验：**同一在线 10 秒窗口没有收到 D435 点云；另一次隔离运行仅约
   `0.30 Hz`。这说明“已配置”不能当作深度冗余已验证，阶段 5 前禁止据此放宽任何安全门。
   `/scan.range_min=0.9 m` 只作为阶段 1 盲区量化的调查起点。

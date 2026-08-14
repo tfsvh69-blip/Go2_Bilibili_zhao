@@ -93,6 +93,19 @@ ros2 run go2_navigation nav_tuner --snapshot --sample-seconds 10
 python3 simdog/src/go2_navigation/tools/nav_tuner.py
 ```
 
+第一次希望用“设置初始位姿 → 下发目标 → 边走边看参数”的方式验证时，应使用固定地图
+AMCL，而不是默认的在线 SLAM：
+
+```bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=static_map localization:=amcl \
+    map_dir:=$HOME/go2_maps/online/latest
+```
+
+固定模式在 RViz 先点工具栏 `2D Pose Estimate`，再点 `Nav2 Goal`。默认
+`online_slam` 由 Slam Toolbox 从当前仿真原点建立 `map`，不需要也不应把手工初始位姿
+作为启动步骤；两种模式不要混用。
+
 界面同时显示 `/scan` 与 D435 频率/年龄、scan 有效/inf/nan 数与最近距离、全局/局部
 costmap 的 lethal/inflated 格、机器人到最近 lethal 格距离、实际发布 footprint、路径长度、
 1 Hz 重规划间隔、按半格加密后的保守 clearance，以及
@@ -118,6 +131,12 @@ source 子参数虽然可被参数服务接受，但 active 插件不会刷新 o
 不会续行。插件列表、插件类型、observation source 结构和 BT 的 1 Hz 频率会被明确拒绝，
 不会伪装成热更新。`safe/balanced/aggressive` 在完整障碍安全验收前均显示
 `UNCALIBRATED`，不得使用。
+
+`published_footprint` 在 Humble 中使用 volatile durability，工具也按相同 QoS 订阅。
+若仍看到 `offering incompatible QoS ... DURABILITY` 或退出时报
+`rcl_shutdown already called`，说明当前终端加载的是修复前构建：重新构建
+`go2_navigation` 并重新 `source scripts/setup_simdog.bash`。CycloneDDS 关于 `lo` 不支持
+multicast 的提示只表示当前仿真被限制在本机回环接口，不是导航故障。
 
 `save` 只定点替换注册表管理的 YAML 标量。写入前备份到
 `logs/backups/<timestamp>/`；任一文件失败会回滚全部文件并输出 unified diff。完整别名、

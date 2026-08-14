@@ -113,6 +113,14 @@ class RuntimeMonitor(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
+        footprint_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            # Nav2 Humble 的 published_footprint publisher 是 volatile。
+            # transient_local subscriber 与它不兼容，会导致足迹面板永久为空。
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
         self.create_subscription(LaserScan, "/scan", self._on_scan, sensor_qos)
         self.create_subscription(
             PointCloud2, "/depth/color/points", self._on_d435, sensor_qos
@@ -133,13 +141,13 @@ class RuntimeMonitor(Node):
             PolygonStamped,
             "/local_costmap/published_footprint",
             lambda msg: self._on_footprint("local", msg),
-            costmap_qos,
+            footprint_qos,
         )
         self.create_subscription(
             PolygonStamped,
             "/global_costmap/published_footprint",
             lambda msg: self._on_footprint("global", msg),
-            costmap_qos,
+            footprint_qos,
         )
         self.create_subscription(PathMessage, "/plan", self._on_plan, 10)
         for name in ("cmd_vel_nav", "cmd_vel_switched", "cmd_vel_smoothed", "cmd_vel"):
@@ -840,7 +848,11 @@ class TunerApplication:
             pass
 
     def run_curses(self, screen: Any, monitor_only: bool = False) -> None:
-        curses.curs_set(1 if not monitor_only else 0)
+        try:
+            curses.curs_set(1 if not monitor_only else 0)
+        except curses.error:
+            # 部分 IDE 集成终端不支持改变光标可见性，但仍可正常绘制和输入。
+            pass
         screen.nodelay(True)
         command = ""
         response = ""
@@ -929,7 +941,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         spin_thread.join(timeout=5.0)
         executor.remove_node(node)
         node.destroy_node()
-        rclpy.shutdown()
+        # SIGINT 可能已经由 rclpy 的信号处理器关闭 context；try_shutdown()
+        # 同时兼容正常退出和已经 shutdown 的退出路径。
+        rclpy.try_shutdown()
     return result
 
 

@@ -734,6 +734,20 @@ source scripts/setup_simdog.bash
 ros2 run go2_navigation nav_tuner
 ```
 
+如果你的学习目标是最直观的“我告诉机器人它在哪，再给一个目标看它走”，先启动固定地图
+AMCL：
+
+```bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+  navigation_mode:=static_map localization:=amcl \
+  map_dir:=$HOME/go2_maps/online/latest
+```
+
+RViz 顶部先点 `2D Pose Estimate`：在地图中机器人真实位置按下鼠标，拖出狗头朝向；看到
+雷达点和地图墙体大致重合、`Localization: active` 后，再点 `Nav2 Goal` 并拖出目标朝向。
+默认 `online_slam` 是“一边走一边画新地图”，Slam Toolbox 已把启动处定义为地图原点，
+所以不走手工输入初始位姿这一步。这是两种工作模式的差别，不是按钮失灵。
+
 终端不是交互式界面时，可用：
 
 ```bash
@@ -795,6 +809,14 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 `rqt_reconfigure` 仍是标准参数 GUI，适合搜索参数，但它不会告诉你插件是否真的有动态
 回调，也不会安全停车、重建插件、保存 YAML 或记录实验。因此学习时可把它理解为“通用
 旋钮面板”，把 `nav_tuner` 理解为“带操作规程和仪表的实验台”。
+
+两个典型终端提示要分开判断：
+
+- `selected interface "lo" is not multicast-capable`：仿真 DDS 被限制在本机回环接口，
+  本机节点仍能通信，不是传感器或导航失败。
+- `published_footprint ... incompatible QoS ... DURABILITY` 或退出时
+  `rcl_shutdown already called`：这是旧版 `nav_tuner` 的足迹订阅/重复退出问题；当前版已
+  分别改用 volatile QoS 和 `try_shutdown()`。若还出现，重新构建包并重新加载环境。
 
 ## 11. Costmap、Footprint 和碰撞保护
 
