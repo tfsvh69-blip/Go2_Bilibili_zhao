@@ -67,6 +67,7 @@ setup(
             "simulation_odom = go2_navigation.simulation_odom:main",
             "nav_tuner = go2_navigation.nav_tuner:main",
             "obstacle_probe = go2_navigation.obstacle_probe:main",
+            "footprint_calibrator = go2_navigation.footprint_calibrator:main",
         ],
     },
 )

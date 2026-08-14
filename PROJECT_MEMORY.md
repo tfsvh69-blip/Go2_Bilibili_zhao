@@ -24,6 +24,66 @@ SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对�
 `safe/balanced/aggressive` 在完整安全验收前保持 `UNCALIBRATED`。
 可重复障碍探针可以用 Gazebo 标准实体服务移动带 ContactSensor 的方块，
 并同步采集 `/velodyne_points`、`/scan`、D435 和接触真值。
+local/global costmap 已使用 URDF collision 与 220 帧 CHAMP 步态联合标定的 24 顶点
+footprint，padding 为 `0.035 m`；`footprint_calibrator --verify-only` 可直接核对两张
+costmap 的实际发布轮廓。
+
+## 2026-08-14 Go2 导航足迹校准阶段 2
+
+### 发现与实际实现
+
+- 旧 local/global footprint 都是手写矩形
+  `x=[-0.28,0.42] m、y=[-0.24,0.24] m`，padding 为 `0.01 m`。它前方和左右
+  偏保守，但有效后边界约 `-0.29 m`，没有包住动态后腿。
+- 新增 `footprint_calibrator` 和源码 wrapper，从运行时
+  `/robot_state_publisher.robot_description` 解析全部 `box/cylinder/sphere` collision；
+  不支持的 mesh 会明确拒绝。工具通过 TF 将 21 个 collision 投影到
+  `base_footprint`，采样站立、前进、原地转向和允许的横移并计算精确凸包。
+- 采样速度只发到 `/cmd_vel_teleop`，继续经过
+  `twist_mux → velocity_smoother → collision_monitor → /cmd_vel`。工具开始前取消旧目标、
+  验证停车，采样结束再次锁停且不自动续行。
+- 两套 RViz 配置新增默认开启的绿色 `Robot Footprint (Padded)` Polygon，直接订阅
+  `/local_costmap/published_footprint`；不是根据 YAML 另画的静态装饰线。
+
+### 已实测数据与参数
+
+- 隔离 Domain 228 在线 SLAM无 GUI 正式采集 220 帧、21 link/帧，共 4620 条 TF。
+  站立 40 帧，前进/转向/横移各 60 帧；四组墙钟采样周期 p99 分别为
+  `0.110/0.107/0.110/0.111 s`，速度链最终峰值分别为
+  `0/0.15/0.30/0.10`。
+- 包络极值来源可追溯：后方 `-0.399337 m` 来自右后上腿，前方
+  `0.353896 m` 来自 D435，右侧 `-0.201784 m` 与左侧 `0.193757 m` 来自后足。
+  旧有效后边界少覆盖约 `0.109 m`。
+- 毫米舍入后的 24 顶点凸包面积为 `0.266358 m²`，原始外接半径
+  `0.428412 m`。姿态/落足统计尾差 `0.009611 m` 加半个 `0.05 m` 栅格
+  `0.025 m`，按 5 mm 向上取整后 padding 为 `0.035 m`；外扩后外接半径
+  `0.474170 m`。
+- 通过 `nav_tuner` 对 local/global 的 footprint 与 padding 执行四次 LIVE 原子
+  set/read-back，并用 `save` 备份受管配置。测试同时发现 PyYAML 会把长 footprint
+  折成带转义的多行字符串，现已统一规范为紧凑单行 JSON/YAML 标量并增加回归测试。
+- local/global `/published_footprint` 均为 24 点。反变换到 `base_footprint` 后边界分别为
+  `[-0.4340,0.3890]×[-0.2370,0.2290] m`。新增 `--verify-only` 使用 Polygon 自身
+  时间戳查询 TF，避免最新 TF 与旧消息错时；local/global 最大逐顶点误差分别为
+  `4.06×10⁻⁸ m`、`3.47×10⁻⁸ m`，与 `0.035 m` 动态 padding 的内部效果一致。
+- 从持久化 YAML 在 Domain 229 冷启动后，`--verify-only` 再次 PASS，local/global
+  误差均不超过 `2.11×10⁻⁸ m`；指定隔离域期望值的 `health_check` PASS，`/cmd_vel`
+  只有 `/collision_monitor` 一个发布者。两次 Ctrl+C 关闭仿真时均观察到既有
+  `champ_gazebo/contact_sensor` 在退出阶段触发 Boost recursive mutex assertion 并以
+  `-6` 结束，其余 Nav2/Gazebo server 节点正常清理；该退出期问题不影响已落盘样本，
+  但不将整套进程描述为“全部干净退出”。
+
+### 门禁与下一步
+
+- 原始 `result.json`、220 帧摘要 CSV 和 4620 行 TF CSV 保存在
+  `go2_navigation/logs/footprint/stage2_footprint_20260814/`；完整顶点、原理、
+  RViz/CLI 复核和适用边界见 `docs/footprint_calibration.md`。
+- 阶段 2 门禁为 PASS，但只代表当前 Gazebo collision、CHAMP 步态及采样速度的几何
+  闭环，不代表真机、跌倒姿态或更高速度已验证；三个 profile 继续保持
+  `UNCALIBRATED`。
+- `go2_navigation` 已用 `--symlink-install` 构建，包级结果为
+  `93 tests, 0 errors, 0 failures, 0 skipped`。
+- 下一停点是阶段 3 Inflation：以标定后外扩 footprint 的外接半径为几何起点，保持
+  Planner、RPP 和速度不变，按 `0.10 m` 单变量步进；尚未开始调整。
 
 ## 2026-08-14 激光雷达近距盲区阶段 1
 

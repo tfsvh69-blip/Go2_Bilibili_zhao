@@ -1,0 +1,54 @@
+# Go2 默认前向控制档。
+#
+# Rotation Shim 在进入目标 XY 容差后锁存位置并完成最终航向对齐，内部
+# Regulated Pure Pursuit 继续只输出前向线速度和角速度。这样既保留
+# “接近侧后方时先对齐、普通大弯连续走”，又避免四足落足漂移让 RPP
+# 在终点旋转与重新追位置之间逐周期切换。参数名以 Nav2 Humble 1.1.20
+# 的运行时声明为准。
+controller_server:
+  ros__parameters:
+    FollowPath:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # 只有前方采样路径接近侧后方（约 80°）才停车对齐；普通弯道由
+      # RPP 保持前进并连续画弧。
+      angular_dist_threshold: 1.40
+      angular_disengage_threshold: 0.40
+      forward_sampling_distance: 0.50
+      rotate_to_goal_heading: true
+      # 仿真 /odom.angular.z 使用 1 s 落足滤波，不满足 Shim 闭环所需的
+      # 低延迟反馈；由 Shim 自身上一周期命令完成加速度约束更稳定。
+      closed_loop: false
+      simulate_ahead_time: 1.0
+      desired_linear_vel: 0.27
+      lookahead_dist: 0.55
+      min_lookahead_dist: 0.35
+      max_lookahead_dist: 0.80
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.45
+      transform_tolerance: 0.2
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.10
+      approach_velocity_scaling_dist: 0.50
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      use_cost_regulated_linear_velocity_scaling: false
+      cost_scaling_dist: 0.25
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 3.0
+      regulated_linear_scaling_min_radius: 0.40
+      regulated_linear_scaling_min_speed: 0.10
+      # 原地路径对齐和最终 yaw 统一交给外层 Rotation Shim，避免外层
+      # shim 与内部 RPP 对同一条 1 Hz 新路径重复作出停车旋转决定。
+      use_rotate_to_heading: false
+      # 当前在 use_rotate_to_heading=false 时不参与计算；保留与外层阈值
+      # 一致，便于临时 A/B 回读且不产生第二套隐含门槛。
+      rotate_to_heading_min_angle: 1.40
+      max_angular_accel: 1.0
+      use_interpolation: true
+
+velocity_smoother:
+  ros__parameters:
+    max_velocity: [0.27, 0.15, 0.45]
+    min_velocity: [-0.27, -0.15, -0.45]

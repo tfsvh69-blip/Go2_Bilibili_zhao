@@ -161,6 +161,30 @@ ros2 run go2_navigation obstacle_probe --sensors scan,velodyne \
 D435 频率与误差尚不满足正式样本门禁，不得当作已验证安全 source。完整定义、
 方向/高度对照和 CSV 字段见[激光雷达近距盲区验证](docs/lidar_blind_zone_validation.md)。
 
+## Go2 Footprint 校准
+
+阶段 2 新增 `footprint_calibrator`。它从运行时 URDF 读取 trunk、四肢、足端和突出
+传感器的全部 collision，采样站立、前进、转向与横移时的 TF 投影并生成凸包；命令只走
+`/cmd_vel_teleop` 安全速度链。运行前在机器人周围留出至少 `2 m` 空地：
+
+```bash
+ros2 run go2_navigation footprint_calibrator \
+  --output-dir simdog/src/go2_navigation/logs/footprint/my_run
+```
+
+工具结束后保持导航锁停。2026-08-14 的 220 帧正式样本得到 24 顶点 footprint，
+`footprint_padding=0.035 m`；local/global 参数回读和发布轮廓均已验证一致。RViz 默认以
+绿色 `Robot Footprint (Padded)` 显示 `/local_costmap/published_footprint`。完整顶点、
+余量推导、原始 CSV 和失败分支见
+[Footprint 校准报告](docs/footprint_calibration.md)。这只完成几何阶段，三个导航 profile
+仍为 `UNCALIBRATED`，Inflation 尚未进入阶段 3 标定。
+
+保存或重启后可用下列命令只核对实际发布轮廓，不驱动步态：
+
+```bash
+ros2 run go2_navigation footprint_calibrator --verify-only
+```
+
 ## RViz 操作
 
 遇到机器人抖动、RViz 红项或目标不取消时，先点击 `Navigation 2 -> Cancel`。仍未停止则：

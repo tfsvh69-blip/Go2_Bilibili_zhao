@@ -7,6 +7,7 @@ ROS 服务调用与终端界面位于 :mod:`go2_navigation.nav_tuner`。
 from __future__ import annotations
 
 import difflib
+import json
 import math
 import os
 import re
@@ -443,7 +444,10 @@ def parse_value(spec: ParameterSpec, text: str) -> Any:
                 if not all(math.isfinite(v) for v in coordinates):
                     raise ValueError("footprint 坐标必须有限")
                 points.append(coordinates)
-            value = yaml.safe_dump(points, default_flow_style=True).strip()
+            # footprint 在 ROS 参数层本质上是一个字符串。PyYAML 默认会按
+            # 80 列折行，read-back 后再持久化便会产生带 ``\n`` 的难读标量。
+            # 使用紧凑 JSON（同时也是合法 YAML）固定成可审计的单行格式。
+            value = json.dumps(points, separators=(",", ":"))
     else:
         value = raw
 
@@ -509,8 +513,15 @@ def format_yaml_scalar(value: Any) -> str:
     """格式化单个 YAML 值，不产生文档结束标记。"""
 
     if isinstance(value, str):
-        return yaml.safe_dump(value, default_style='"').strip()
-    rendered = yaml.safe_dump(value, default_flow_style=True).strip()
+        rendered = yaml.safe_dump(
+            value, default_style='"', width=1_000_000
+        ).strip()
+        if "\n" in rendered:
+            raise ValueError("拒绝把多行字符串写入单行 YAML 标量")
+        return rendered
+    rendered = yaml.safe_dump(
+        value, default_flow_style=True, width=1_000_000
+    ).strip()
     return rendered.removesuffix("\n...")
 
 

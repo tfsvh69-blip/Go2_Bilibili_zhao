@@ -852,6 +852,54 @@ world 没有 `gazebo_ros_state` 插件，或尚未重启 Gazebo；不要跳过�
 “近距已覆盖”。详细 CSV、方向与障碍厚度对照见
 `simdog/src/go2_navigation/docs/lidar_blind_zone_validation.md`。
 
+### 10.3 Footprint 校准：画的是整只机器狗的动态影子
+
+只量 trunk 长宽不够。四足机器人前进或横移时，足端和腿会伸出机身；前置 D435 也会
+突出。如果 Footprint 只包住躯干，RViz 看起来还能规划，真实腿却可能先碰墙。反过来，
+把所有方向都随意画得很大，又会让本来能过的门被规划器误判为过不去。
+
+本项目的 `footprint_calibrator` 会读取运行中 URDF 的 21 个 collision，把每个 link 的
+实时 TF 投影到 `base_footprint`，并在四种动作中收集“地面影子”：站立、前进
+`0.15 m/s`、转向 `0.30 rad/s`、横移 `0.10 m/s`。最后对所有影子取凸包。它不会直接改
+配置，先输出可复核的 polygon 和 padding；本轮正式结果经 `nav_tuner` 同步应用到
+local/global costmap。
+
+| 名词/显示 | 数据来源 | 正常含义 | 异常表现 | 如何观察 |
+|---|---|---|---|---|
+| 原始 Footprint | URDF collision + 220 帧步态 TF | 24 顶点包住 trunk、腿、足端和传感器 | 绿色线穿进任何 collision，尤其后腿 | RViz 俯视并打开 RobotModel |
+| `footprint_padding=0.035 m` | 9.61 mm 姿态统计尾差 + 25 mm 半栅格 | 为采样误差和栅格离散再留一圈 | 太小会贴碰撞体；太大导致窄门虚假不可行 | `ros2 param get` 两张 costmap |
+| `Robot Footprint (Padded)` 绿色线 | `/local_costmap/published_footprint` | Nav2 实际使用的外扩后 24 点轮廓，随狗移动 | 不显示、只有 4 点、与 RobotModel 明显错位 | RViz 左侧 Displays 默认已开启 |
+| local/global 一致性 | 两个 costmap 参数与发布话题 | 同一个机器人在规划和控制中几何一致 | 全局能规划、局部却突然判碰撞，或反之 | `nav_tuner --snapshot` |
+
+新旧轮廓最容易看懂的区别是：旧矩形后边界加 padding 后只有约 `-0.29 m`，实测后腿
+却到 `-0.399 m`；新轮廓补上后方漏区。新图前方反而从旧的过度保守值收回到 D435
+实际外壳附近，所以“顶点更多”不等于盲目变大，而是每个方向更符合实体。
+
+重复校准前先取消导航目标，并确保机器人周围至少有 `2 m` 空地：
+
+```bash
+source scripts/setup_simdog.bash
+ros2 run go2_navigation footprint_calibrator \
+  --output-dir simdog/src/go2_navigation/logs/footprint/my_run
+
+# 参数保存或重启后只核对发布轮廓，不让机器人走四种步态
+ros2 run go2_navigation footprint_calibrator --verify-only
+```
+
+正常会看到 4 个场景依次完成、总计约 220 帧，最后打印
+`recommended_footprint`、`recommended_padding_m` 和结果目录。工具发出的速度只走
+`/cmd_vel_teleop → twist_mux → velocity_smoother → collision_monitor → /cmd_vel`；若
+提示“最终速度未证明命令落地”，先排查安全锁和速度链，不能改成直接发布 `/cmd_vel`。
+结束后导航保持锁停且旧目标不会续行，确认 RViz 绿色轮廓和机器人投影一致后再执行：
+
+```bash
+ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
+```
+
+本轮只证明 Gazebo 当前步态的几何包络；真机柔性、摔倒和更高速度仍是后续实验，不能
+因为绿色线看起来正确就提前把三个 profile 标成已校准。完整 24 个顶点、逐动作范围与
+原始证据见 `simdog/src/go2_navigation/docs/footprint_calibration.md`。
+
 ## 11. Costmap、Footprint 和碰撞保护
 
 | 名词 | 解释 | 比喻 |

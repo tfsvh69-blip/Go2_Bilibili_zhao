@@ -181,6 +181,17 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
     assert global_scan["marking"] is True
     assert global_scan["clearing"] is True
     local = document["local_costmap"]["local_costmap"]["ros__parameters"]
+    local_footprint = ast.literal_eval(local["footprint"])
+    global_footprint = ast.literal_eval(global_costmap["footprint"])
+    assert local_footprint == global_footprint
+    assert len(local_footprint) == 24
+    assert min(point[0] for point in local_footprint) == -0.399
+    assert max(point[0] for point in local_footprint) == 0.354
+    assert min(point[1] for point in local_footprint) == -0.202
+    assert max(point[1] for point in local_footprint) == 0.194
+    assert local["footprint_padding"] == 0.035
+    assert global_costmap["footprint_padding"] == 0.035
+    assert "\n" not in local["footprint"]
     assert local["robot_base_frame"] == "base_footprint"
     assert local["scan_layer"]["scan"]["data_type"] == "LaserScan"
     assert local["scan_layer"]["scan"]["max_obstacle_height"] == 2.0
@@ -224,6 +235,14 @@ def test_navigation_launch_reuses_standard_bt_navigator_and_disables_respawn():
     assert '"forward_mppi": "controller_forward_mppi.yaml"' in text
     assert 'LaunchConfiguration("tuning_gui")' in text
     assert 'rqt_reconfigure.param_plugin.ParamPlugin' in text
+
+
+def test_both_rviz_profiles_show_padded_runtime_footprint():
+    for filename in ("navigation.rviz", "online_mapping_navigation.rviz"):
+        text = (PACKAGE_ROOT / "rviz" / filename).read_text(encoding="utf-8")
+        assert "Name: Robot Footprint (Padded)" in text
+        assert "Value: /local_costmap/published_footprint" in text
+        assert "Durability Policy: Volatile" in text
 
 
 def test_amcl_accepts_native_two_d_map_while_ndt_keeps_bundle_validation():

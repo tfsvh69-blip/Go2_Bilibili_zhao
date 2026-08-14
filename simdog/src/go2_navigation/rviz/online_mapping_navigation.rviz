@@ -105,6 +105,19 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /local_costmap/costmap_updates
       Value: false
+    - Alpha: 1
+      Class: rviz_default_plugins/Polygon
+      Color: 25; 255; 0
+      Enabled: true
+      Name: Robot Footprint (Padded)
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/published_footprint
+      Value: true
     - Class: rviz_default_plugins/LaserScan
       Enabled: true
       Name: SLAM Scan

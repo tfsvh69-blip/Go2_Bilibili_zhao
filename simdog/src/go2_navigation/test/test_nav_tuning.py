@@ -107,6 +107,8 @@ def test_parse_value_checks_type_range_and_safety_switches():
 def test_parse_footprint_returns_runtime_string_and_rejects_bad_polygon():
     spec = REGISTRY["geometry.local_footprint"]
     value = parse_value(spec, "[[0.4, 0.2], [0.4, -0.2], [-0.3, 0.0]]")
+    assert value == "[[0.4,0.2],[0.4,-0.2],[-0.3,0.0]]"
+    assert "\n" not in value
     assert yaml.safe_load(value) == [[0.4, 0.2], [0.4, -0.2], [-0.3, 0.0]]
     with pytest.raises(ValueError, match="至少需要 3"):
         parse_value(spec, "[[0.0, 0.0], [1.0, 0.0]]")
@@ -158,6 +160,26 @@ def test_persist_single_owner_still_backs_up_both_managed_files(tmp_path):
     assert len(result.changed_files) == 1
     assert (result.backup_dir / "config" / "navigation.yaml").is_file()
     assert (result.backup_dir / "config" / "controller_forward_rpp.yaml").is_file()
+
+
+def test_persist_footprint_keeps_long_runtime_string_on_one_yaml_line(tmp_path):
+    package = _temporary_package(tmp_path)
+    value = parse_value(
+        REGISTRY["geometry.local_footprint"],
+        "[[0.41,0.21],[0.41,-0.21],[-0.31,-0.21],[-0.31,0.21]]",
+    )
+    persist_values(
+        package,
+        {"geometry.local_footprint": value},
+        timestamp="footprint_one_line",
+    )
+    navigation = package / "config" / "navigation.yaml"
+    text = navigation.read_text(encoding="utf-8")
+    matching_lines = [line for line in text.splitlines() if value in line]
+    assert len(matching_lines) == 1
+    document = yaml.safe_load(text)
+    runtime = document["local_costmap"]["local_costmap"]["ros__parameters"]
+    assert runtime["footprint"] == value
 
 
 def test_persist_values_rolls_back_all_files_if_second_replace_fails(

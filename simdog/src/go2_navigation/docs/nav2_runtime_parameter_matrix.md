@@ -38,10 +38,10 @@ read-back 冒充生效，又避免在 unconfigured 态死等。依据分别是
 | `local.cost_scaling_factor` | `/local_costmap/local_costmap.inflation_layer.cost_scaling_factor` | float/1/m | 同层 `cost_scaling_factor` | 3.0 | 0.01–100 | LIVE |
 | `global.inflation_radius` | `/global_costmap/global_costmap.inflation_layer.inflation_radius` | float/m | `navigation.yaml: global_costmap.global_costmap.ros__parameters.inflation_layer.inflation_radius` | 0.30 | 0–5 | LIVE |
 | `global.cost_scaling_factor` | `/global_costmap/global_costmap.inflation_layer.cost_scaling_factor` | float/1/m | 同层 `cost_scaling_factor` | 3.0 | 0.01–100 | LIVE |
-| `geometry.local_footprint` | `/local_costmap/local_costmap.footprint` | string polygon/m | `navigation.yaml: local_costmap.local_costmap.ros__parameters.footprint` | 4 顶点矩形 | ≥3 个有限二维顶点 | LIVE |
+| `geometry.local_footprint` | `/local_costmap/local_costmap.footprint` | string polygon/m | `navigation.yaml: local_costmap.local_costmap.ros__parameters.footprint` | 阶段 2 标定的 24 顶点凸包 | ≥3 个有限二维顶点 | LIVE |
 | `geometry.global_footprint` | `/global_costmap/global_costmap.footprint` | string polygon/m | `navigation.yaml: global_costmap.global_costmap.ros__parameters.footprint` | 同上 | ≥3 个有限二维顶点 | LIVE |
-| `geometry.local_padding` | `/local_costmap/local_costmap.footprint_padding` | float/m | local costmap `footprint_padding` | 0.01 | 0–0.5 | LIVE |
-| `geometry.global_padding` | `/global_costmap/global_costmap.footprint_padding` | float/m | global costmap `footprint_padding` | 0.01 | 0–0.5 | LIVE |
+| `geometry.local_padding` | `/local_costmap/local_costmap.footprint_padding` | float/m | local costmap `footprint_padding` | 0.035 | 0–0.5 | LIVE |
+| `geometry.global_padding` | `/global_costmap/global_costmap.footprint_padding` | float/m | global costmap `footprint_padding` | 0.035 | 0–0.5 | LIVE |
 
 InflationLayer 的 `inflation_radius/cost_scaling_factor` 动态回调会重新计算缓存；
 Costmap2DROS 的 footprint 与 padding 动态回调会更新发布足迹。上游依据：
@@ -198,6 +198,14 @@ ros2 run go2_navigation nav_tuner --monitor-only
 - **待后续实验：**同一在线 10 秒窗口没有收到 D435 点云；另一次隔离运行仅约
   `0.30 Hz`。这说明“已配置”不能当作深度冗余已验证，阶段 5 前禁止据此放宽任何安全门。
   `/scan.range_min=0.9 m` 只作为阶段 1 盲区量化的调查起点。
+- **阶段 2 已实测，Domain 228：**从 21 个 URDF collision 采集站立/前进/转向/横移
+  共 220 帧、4620 条 TF；推荐 24 顶点凸包和 `0.035 m` padding。四项 LIVE 设置
+  原子 set/read-back 成功，local/global `published_footprint` 均为 24 点；反变换到
+  `base_footprint` 后外框分别约为
+  `[-0.4340,0.3890]×[-0.2370,0.2290] m`。使用消息时间戳查询 TF 后，local/global
+  热更新验证的最大逐顶点误差分别为 `4.06×10⁻⁸ m`、`3.47×10⁻⁸ m`；Domain 229
+  从 YAML 冷启动后两者均不超过 `2.11×10⁻⁸ m`，健康检查 PASS，最终 `/cmd_vel`
+  发布者唯一。长 footprint 现规范化为单行 JSON，`save` 不再产生 PyYAML 折行转义。
 
-结论：阶段 0 工具链 PASS；传感器可靠距离、足迹、Inflation、Persistence、Depth 和
-Collision Monitor 数值仍未标定，不能把本矩阵中的配置基线称为安全最优值。
+结论：阶段 0 工具链、阶段 1 LiDAR 盲区和阶段 2 Footprint 均 PASS；Inflation、
+Persistence、Depth 和 Collision Monitor 数值仍未标定，不能把当前配置称为安全最优值。

@@ -2,7 +2,7 @@
 #
 # 相对旧 go2_config/config/autonomy/navigation.yaml 的修正：
 # - odom_topic 改为 /odom（不再依赖 LIO-SAM 内部话题）；
-# - footprint 使用 URDF collision 与实际步态联合标定的凸多边形；
+# - footprint 使用机身多边形而非 robot_radius=0.22；
 # - 全部节点 use_sim_time: True，与 Gazebo 时钟一致；
 # - 规划器使用 SmacPlanner2D，控制器由 controller_profile 参数文件提供；
 # - Velodyne 水平切片统一转换为 /scan，D435 使用实际话题 /depth/color/points；
@@ -271,10 +271,10 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        # 阶段 2 只校准 footprint；此值留待阶段 3 单变量实测。
+        # 阶段一先用紧贴 footprint 的联调值；闭环稳定后按场景逐步增大。
         inflation_radius: 0.30
-      footprint: "[[-0.399,-0.156],[-0.393,-0.163],[-0.373,-0.175],[-0.353,-0.18],[-0.162,-0.202],[0.231,-0.178],[0.238,-0.176],[0.24,-0.175],[0.247,-0.17],[0.354,-0.046],[0.354,0.045],[0.35,0.058],[0.245,0.173],[0.244,0.174],[0.24,0.177],[0.21,0.188],[0.205,0.189],[-0.169,0.194],[-0.174,0.194],[-0.361,0.174],[-0.38,0.169],[-0.397,0.157],[-0.398,0.156],[-0.399,0.154]]"
-      footprint_padding: 0.035
+      footprint: "[[0.42, 0.24], [0.42, -0.24], [-0.28, -0.24], [-0.28, 0.24]]"
+      footprint_padding: 0.01
       always_send_full_costmap: False
   global_costmap_client:
     ros__parameters:
@@ -338,10 +338,9 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        # 阶段 2 只校准 footprint；此值留待阶段 3 单变量实测。
         inflation_radius: 0.30
-      footprint: "[[-0.399,-0.156],[-0.393,-0.163],[-0.373,-0.175],[-0.353,-0.18],[-0.162,-0.202],[0.231,-0.178],[0.238,-0.176],[0.24,-0.175],[0.247,-0.17],[0.354,-0.046],[0.354,0.045],[0.35,0.058],[0.245,0.173],[0.244,0.174],[0.24,0.177],[0.21,0.188],[0.205,0.189],[-0.169,0.194],[-0.174,0.194],[-0.361,0.174],[-0.38,0.169],[-0.397,0.157],[-0.398,0.156],[-0.399,0.154]]"
-      footprint_padding: 0.035
+      footprint: "[[0.42, 0.24], [0.42, -0.24], [-0.28, -0.24], [-0.28, 0.24]]"
+      footprint_padding: 0.01
       always_send_full_costmap: False
   local_costmap_client:
     ros__parameters:
