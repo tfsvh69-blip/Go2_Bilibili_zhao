@@ -6,7 +6,7 @@
 # - 全部节点 use_sim_time: True，与 Gazebo 时钟一致；
 # - 规划器使用 SmacPlanner2D，控制器由 controller_profile 参数文件提供；
 # - Velodyne 水平切片统一转换为 /scan，D435 使用实际话题 /depth/color/points；
-# - 提供稳定普通（0.30/0.25）与精确（0.10/0.10）两档 goal checker；
+# - 提供稳定普通（0.30/0.15）与精确（0.10/0.10）两档 goal checker；
 # - 参数名以本机 ROS 2 Humble Nav2 运行时声明为准，禁止混用新发行版字段。
 
 controller_server:
@@ -28,12 +28,12 @@ controller_server:
       required_movement_angle: 0.15
       movement_time_allowance: 15.0
 
-    # 普通模式：稳定完成优先，给四足落足与定位波动留出滞回余量。
+    # 普通模式：约 8.6° 航向精度，同时给四足停转留出制动余量。
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.30
-      yaw_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.15
 
     # 精确模式：0.10 m / 0.10 rad
     precise_goal_checker:
@@ -66,13 +66,16 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_smac_planner/SmacPlanner2D"
-      tolerance: 0.25
+      # 不允许规划器用附近替代终点静默完成；目标门禁会提前拒绝明显非法目标。
+      tolerance: 0.0
       downsample_costmap: false
       downsampling_factor: 1
       allow_unknown: true
       max_iterations: 100000
       max_on_approach_iterations: 1000
       smooth_path: true
+      # SmacPlanner2D 在 false 时强制保留 RViz 目标的最终 yaw。
+      use_final_approach_orientation: false
       minimum_turning_radius: 0.0  # SmacPlanner2D 忽略，仅占位
       cost_travel_multiplier: 2.0
 
@@ -145,6 +148,7 @@ bt_navigator:
       - nav2_planner_selector_bt_node
       - nav2_controller_selector_bt_node
       - nav2_goal_checker_selector_bt_node
+      - go2_terminal_path_latch_bt_node
 
 waypoint_follower:
   ros__parameters:

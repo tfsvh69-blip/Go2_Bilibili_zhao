@@ -5,10 +5,16 @@
 pointcloud_to_laserscan:
   ros__parameters:
     use_sim_time: true
-    target_frame: velodyne
+    # 输入点云本身已是 velodyne；留空走直接订阅，避免 MessageFilter 在冷启动
+    # 等待“velodyne -> velodyne”恒等 TF 时把首批点云长期积压。
+    target_frame: ""
     transform_tolerance: 0.05
+    # 导航安全链长期需要 /scan；避免订阅图变化触发 lazy 订阅竞态后断流。
+    always_subscribe: true
     min_height: -0.05
     max_height: 0.10
+    # 保持最大角略小于完整 pi 端点：转换器分配 720 个 bin，恰好为 pi
+    # 的点若计算出索引 720 会越界。
     angle_min: -3.14159
     angle_max: 3.14159
     angle_increment: 0.00872665

@@ -2,17 +2,18 @@
 
 ## 当前状态
 
-更新时间：2026-08-12
+更新时间：2026-08-13
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
 Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
-当前执行 `colcon list` 可识别 24 个 ROS 2 包。
+当前执行 `colcon list` 可识别 24 个 ROS 2 包（含新增的
+`go2_navigation_bt_plugins`）。
 
 `go2_navigation` 当前以统一入口提供两条互斥闭环：默认
 `online_slam` 使用 Slam Toolbox 边建图边导航；`static_map` 默认以 AMCL 在固定二维图
 定位。`lidar_ndt` 通过二维全局 EKF、`ndt_cuda` 作为实验后端保留。两种模式都复用
-SmacPlanner2D + SmoothPath + RPP（默认）/MPPI（对照）以及
+SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对照）以及
 `twist_mux → velocity_smoother → collision_monitor → /cmd_vel` 安全控制链。
 
 ## 2026-08-12 建图、定位与导航抖动修复
@@ -44,7 +45,8 @@ SmacPlanner2D + SmoothPath + RPP（默认）/MPPI（对照）以及
 - 安全监督增加 `HEALTHY/DEGRADED/LOST` 滞回：单帧 NDT 拒绝不停车，连续失效 2 秒
   或明确重定位请求才停车；fitness 5.25 且连续 5 个健康样本后清锁。ROS 图与 lifecycle
   检查降到 1 Hz。
-- RPP 保持 0.27 m/s 和碰撞预测，控制器 10 Hz，普通容差现为 0.30 m/0.25 rad，
+- 默认 Rotation Shim 的内层 RPP 保持 0.27 m/s 和碰撞预测，控制器 10 Hz，普通容差为
+  0.30 m/0.15 rad，
   `min_approach_linear_velocity=0.10 m/s`。BT 降为 20 Hz，action/service 应答门槛
   由 20 ms 改为 500 ms，避免把正常调度抖动误判为服务失败。
 - `goal_guard` 改为异步 action 转发和取消传播；bridge 改用单线程执行器；三个 Python
@@ -130,40 +132,114 @@ SmacPlanner2D + SmoothPath + RPP（默认）/MPPI（对照）以及
 - 根目录协作规则已规定：新增用户可见术语、RViz 元素或典型故障截图时必须同步维护该
   手册；颜色只能作为辅助，最终以 Display 名称和来源话题为准。
 
-### 2026-08-12 路径圆滑与终点摆动修复（已实施，Gazebo 运行验收待完成）
+### 2026-08-13 `forward_rpp` 终点航向摆动修复（控制实现完成，整体验收未通过）
 
-- 现场 AMCL 标准差约 `0.011/0.029 m、yaw 0.016 rad`，说明本轮终点摆动不是此前的定位
-  跳变。目标约 `(-10.125,-1.635,-179°)`，机器人原地踏步时距离在
-  `0.231→0.263→0.272 m` 跨越 `xy_goal_tolerance=0.25 m`，Humble RPP 因此在终点旋转
-  与重新追位置之间切换。
-- 原 `SimpleProgressChecker` 只计算平移；日志多次出现 `Failed to make progress`，随后
-  Behavior Tree 运行 `BackUp`，实测 `/cmd_vel_nav.linear.x=-0.05`。现改用上游
-  `PoseProgressChecker`，`0.10 m` 平移或 `0.15 rad` 转向任一达到均算进展。
-- 另一个根因是 `rotate_to_heading_min_angle=0.35 rad`（约 20°）会将普通弯道
-  切成“原地转向—直行”。RPP 基线现为前视 `0.55 m`、范围 `0.35–0.80 m`、
-  原地对齐阈值 `0.85 rad`、角速度 `0.35 rad/s`、角加速度 `1.0 rad/s²`。
-- `smoother_server` 原先虽启动但行为树没有调用。现在每次 `ComputePathToPose`
-  后调用 `SmoothPath(SimpleSmoother)`，并开启平滑结果碰撞检查；平滑失败会保留
-  原始有效路径，不直接中止导航。
-- 新增 `controller_profile:=forward_mppi` DiffDrive 对照档，现有 `omni_mppi` 保留；
-  默认仍为低负载 `forward_rpp`。新增 `tuning_gui:=true` 可启动标准
-  `rqt_reconfigure`，运行时参数不写回 YAML。
-- RViz 新增对照：绿色 `Raw Global Plan=/plan`，蓝色
-  `Controller Path (Smoothed)=/received_global_plan`。直接 pytest `37 passed`，
-  `go2_navigation` 构建通过，两个启动入口 `--show-args` 通过，XML/YAML/规则
-  镜像检查通过。
-- 独立 Domain 193/194 实测 RPP 档的 controller、smoother、planner、BT、速度平滑和
-  Collision Monitor 均进入 `active`，运行参数回读为 `PoseProgressChecker`、
-  `0.85 rad`、`0.30 m`；`/smooth_path` action 存在。0.60 m 在线短目标约 2 秒
-  `SUCCEEDED`、recovery=0。该次新建地图起点的平滑碰撞检查判定失败，
-  BT 按设计回退原路径；因此平滑实际采用率仍要在正式固定地图中统计。
-- 独立 Domain 195 实测 `forward_mppi` 成功激活，运行回读为
-  `DiffDrive`、`batch_size=800`、`model_dt=0.1`。12 目标、移动障碍和 10 分钟
-  负载尚不能记为已通过。
-- 独立 Domain 196 验证 RPP 动态参数回调：
-  `FollowPath.rotate_to_heading_min_angle` 从 `0.85` 运行时改为 `0.90`
-  立即回读生效，再恢复 `0.85`。这与 `rqt_reconfigure` 使用的 ROS 2
-  parameter service 相同；本次自动验收为无界面，没有把 Qt 窗口肉眼操作记为已验证。
+#### 现场根因
+
+- 新证据为：目标距离约 `0.26 m < 0.30 m`，剩余 yaw 误差约 `2.47 rad/142°`；
+  12 秒内 `/cmd_vel_nav.angular.z` 换向 41 次并夹带前进速度，而 AMCL yaw 标准差只有
+  `0.011–0.022 rad`。Collision Monitor 没有造成上游 `/cmd_vel_nav` 换向，根因是
+  Humble RPP 在 XY 容差边界反复切换追位置和终点定向。
+- 直接换成上游 Rotation Shim 后，专项运行又发现 Humble 的 `setPlan()` 每次都会重置
+  shim 内部 `PositionGoalChecker`。默认行为树的 1 Hz 重规划因此仍可能让终点定向退出；
+  不能靠继续放宽 yaw 或关闭碰撞保护规避。
+- `closed_loop=true` 的首次 A/B 还发现 `/odom/ground_truth.twist.angular.z` 含有四足落足
+  周期内约 `-0.74…+1.14 rad/s` 的瞬时机身摆动，会直接进入 shim 的角加速度反馈。
+
+#### 实际实现
+
+- `forward_rpp` 外层改为
+  `nav2_rotation_shim_controller::RotationShimController`，内层保持原 RPP 全部前向速度、
+  前视和碰撞参数。启用 `rotate_to_goal_heading=true`、`closed_loop=false`；转速
+  `0.45 rad/s`、角加速度 `1.0 rad/s²`、旋转预测 `1.0 s`、进入/退出阈值
+  `1.40/0.40 rad`、采样距离 `0.50 m`。内部 RPP 的 `use_rotate_to_heading=false`，普通
+  弯道保持前进画弧，接近侧后方的路径才由外层 shim 停车对齐。普通 goal checker 为
+  `0.30 m/0.15 rad`；PoseProgressChecker、速度平滑和 Collision Monitor 未变。
+- `closed_loop=false` 仅避免把当前 1 秒滑窗 `/odom.twist.angular.z` 用作低延迟角加速度
+  反馈；目标姿态仍由 TF 与 GoalChecker 闭环判定，不是关闭导航闭环。
+- 纯旋转分层失败后按 CHAMP 层继续单变量修复：Go2 gait 的 `stance_depth` 从
+  `0.01 m` 改为 `0.0 m`，取消支撑脚额外向地面下压。该值与 BSD-3-Clause 的
+  CHAMP robots Go1 仿真基线一致，并且本机 A/B 明确降低旋转漂移；其余 gait/PID/摩擦
+  候选没有同时改善双向增益和漂移，均已撤回。
+- BSD-3-Clause 包 `go2_navigation_bt_plugins` 的 `TerminalPathLatch` 已改为有状态 BT
+  装饰节点。现场进一步确认旧实现每次规划成功都调用 `resetChild()`，把嵌套
+  `RateController` 重置为首次运行，造成 12 秒 40 条 `/plan`；新实现覆盖装饰节点默认
+  `executeTick()` 生命周期，规划成功后保留 RateController 计时状态。路径末端按
+  `0.075 m/0.01 rad` 与原始目标匹配，实时 `map→base_footprint` TF 必须确认机器人同时
+  位于原始目标和路径末端 `0.30 m` 内才锁存。新目标必须先成功生成新路径；定位短时漂出
+  不解除，`halt()` 或 recovery 清除；TF 暂不可用且未锁存时继续规划并限频诊断。
+- `GridBased.tolerance` 已从 `0.25 m` 收紧为 `0.0 m`，不可达目标明确失败；显式设置
+  `use_final_approach_orientation=false`，路径末端保持 RViz 目标 yaw，不使用附近替代终点。
+- Goal Guard 新增 transient-local 只读话题 `/navigation/accepted_goal`；诊断现在分别计算
+  机器人到原始目标、机器人到路径末端、路径末端到原始目标，并报告锁存前规划频率与
+  锁存后 `/plan` 数量，避免把规划器替代终点或 AMCL 跳变误判为控制器问题。
+- 仿真里程计增加 1 秒展开 yaw 窗口，只平滑输出 `/odom.twist.angular.z`，不修改姿态；
+  它用于降低四足落足瞬时速度噪声，不外推到真机，也不再作为 shim 的闭环输入。
+- 冷启动期间还定位并修复 `/scan` 在临时订阅者退出后停更：Velodyne 点云已经在目标
+  frame，`target_frame` 改为空以走直接订阅。vendored
+  `pointcloud_to_laserscan` 增加默认关闭的 `always_subscribe` 参数，导航档显式设为
+  `true`，避免输出订阅图变化触发 lazy 订阅竞态。三次临时 `/scan` 订阅/退出后仍持续
+  约 `6.6–7.9 Hz`，`/pause_navigation=false`，Collision Monitor 和安全监督未关闭。
+- `go2_navigation/package.xml` 显式声明 `nav2_rotation_shim_controller` 与新 BT 包；
+  YAML/依赖/行为树/仿真角速度过滤均增加测试。新增只读命令
+  `rotation_diagnostics`，可在 `manual`/`navigation` 模式汇总四级速度差、实际旋转增益、
+  换向、终点线速度、真值/odom/TF 误差、`map→odom` 单步修正、重规划和安全锁状态。
+- 根 README、导航 README、本文档与
+  `文档/Go2导航建图与RViz初学者图解手册.md` 已同步，明确 `/cmd_vel_teleop` 是安全手动
+  入口、五层故障树和纯旋转测试方法；外部 Go2/CHAMP 项目仅作设计参考，不复用其
+  里程计速度倍率补丁。
+
+#### 验证结果与剩余边界
+
+- 当前源码 `go2_navigation` pytest 共 62 项通过。`TerminalPathLatch` 的 12 个 C++ gtest
+  覆盖真实 TF 双距离、边界漂移保持、`0.075 m/0.01 rad` 路径匹配边界、同 XY 新 yaw、
+  旧路径不匹配、TF 失败、`halt()/recovery` 清除，以及真实 `RateController` 连续快速
+  tick 不突破周期，全部通过。两包 `colcon build/test` 通过；当前工作区累计
+  `colcon test-result` 为 196 项、0 failure、6 skipped（包含此前其他包结果）。
+  `go2_navigation/setup.py` 已声明 pytest 测试依赖，因此计划中的 `colcon test` 会实际
+  运行 62 项 Python 测试，不再回退为“Ran 0 tests”的 unittest 空跑。
+- 旧锁存实现曾连续完成两个同一 XY 的内部 `±90°` action，并将连续左右摆动从现场
+  41 次降为 0/1 次；这只能作为问题链证据，不能替代当前实时 TF 锁存的重新实测。
+- 已在安全链实际完成 `±0.15/0.25/0.35/0.45 rad/s` 纯旋转采样。四级速度链最终值与
+  请求值误差不超过 `0.02 rad/s`，纯旋转线速度为零，Gazebo 真值、`/odom` 和
+  `odom→base_footprint` 累计 yaw 差不超过 `0.03 rad`，因此命令传递与真值里程计适配
+  通过。实体层未通过：原始摩擦 `0.6` 下 `+0.45 rad/s` 稳态增益约 `32.5%`、每 90°
+  等效漂移约 `0.379 m`；`-0.45 rad/s` 增益约 `93.8%`、等效漂移约 `0.130 m`。
+  `±0.25/0.35` 也因每 90° 等效漂移约 `0.19–0.32 m` 失败。四脚摩擦系数单变量提高到
+  `1.0` 后正向增益仍约 `33.5%`、漂移约 `0.410 m/90°`，无改善，已恢复 `0.6`。
+- `stance_depth=0.0 m` 是唯一保留的底层 A/B：`+0.45 rad/s` 改善到约 `69.7%`、
+  `0.113 m/90°`，`-0.45 rad/s` 为约 `61.2%`、`0.064 m/90°`，方向差异和漂移明显
+  缩小但仍未全部过线。上游 Go1 PID `180/20/7`、`stance_duration=0.20/0.30 s`、
+  `swing_height=0.05 m` 均未同时改善增益与漂移并已恢复原值；这些结果说明剩余问题不能
+  靠单纯提高摩擦、PID 或步幅解决，需要后续审查 CHAMP 开环落足轨迹/接触力闭环。
+- 新状态机已做一次无界面同 XY `+90°` 固定图专项实测：action 在 `4.8 s` 内
+  `SUCCEEDED`；四级速度终点段均为 `max|linear.x|=0`、`max|angular.z|=0.45 rad/s`、
+  0 次换向，终点前仅收到 1 条路径，进入双终点容差 `0.30 s` 后 `/plan=0`。这证明本轮
+  高频重规划和 Rotation Shim/RPP 反复切换修复有效。该次 AMCL 随后产生 `0.414 m`
+  单步 `map→odom` 修正，停稳后机器人到原始目标/路径末端约 `1.228/1.208 m`，所以整体验收
+  仍为 FAIL，不能执行或宣称 12 目标通过。下一步先用 `2D Pose Estimate` 准确初始化并
+  等待 AMCL 稳定 10 秒；若仍超过 `0.10 m/rad`，重建或修正 `home_02` 地图/定位，而不是
+  调控制器。定位通过后再记录 `/plan`、四级速度、`/amcl_pose` 完成 12 目标。
+- 用户随后现场确认“好很多，终点不会再来回左右摆动”，验证了锁存修复的肉眼效果。
+  同次反馈中的旧诊断在结束时机器人到原始目标/路径末端仍为 `5.401/5.393 m`，路径末端
+  到原始目标仅 `0.010 m/0.000 rad`，`map→odom` 单步为 `0.020 m/0.009 rad`。这组数据
+  表明采样仍在途中且定位稳定，不能按终点误差判 FAIL。
+- `rotation_diagnostics` 的 navigation 模式现改为等待新目标并在每个新目标后重新计算
+  `120 s` 获取期限；进入双终点 XY 容差后才执行默认 `10 s` 终点采样，action 成功后再
+  等待 1 秒停稳。未进入终点返回 `INCOMPLETE`/退出码 2；同时报告标准 action 状态和
+  终点外原地旋转片段、路径夹角及 `/plan` 关联。该改动用于区分“还在路上”和真正终点失败。
+- 本轮无界面冷启动已回读运行参数：shim 进入/退出阈值为 `1.40/0.40 rad`、内部 RPP
+  `use_rotate_to_heading=false`、普通 yaw 容差为 `0.15 rad`，controller lifecycle 为
+  `active`。一次同 XY `+90°` 目标中，终点控制段 `linear.x=0`、角速度上限
+  `0.45 rad/s`、换向 0 次且锁存后没有新 `/plan`；action 随后返回 `SUCCEEDED`。
+  但该次 `map→odom` 最大单步位置修正达到 `0.586 m`，且成功晚于 10 秒终点采样窗口，
+  因此只把它记作控制链证据，不把最终位置/yaw 当作当前地图的验收结果。另一次未发送
+  新目标的实跑已确认诊断输出 `INCOMPLETE` 并返回退出码 2，符合新增接口语义。
+
+上游依据为 Navigation2 的
+[Rotation Shim 官方说明](https://docs.nav2.org/configuration/packages/configuring-rotation-shim-controller.html)
+和 [Humble RPP 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_regulated_pure_pursuit_controller/src/regulated_pure_pursuit_controller.cpp)；
+Nav2 为 Apache-2.0，本项目新增 BT 插件为 BSD-3-Clause。
 
 以下 2026-08-11 及更早记录保留为历史证据；其中“默认 NDT”、独立在线入口和派生
 bt_navigator 等描述已被本节当前架构取代。

@@ -10,23 +10,31 @@
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
-        <RateController hz="1.0">
-          <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathToPose">
-            <Sequence name="ComputeAndOptionallySmoothPath">
-              <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
-              <!-- 平滑是质量增强而不是安全门禁：失败时 AlwaysSuccess
-                   保留 ComputePathToPose 写入的原路径继续执行。 -->
-              <Fallback name="UseRawPathWhenSmoothingFails">
-                <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
-                            smoother_id="simple_smoother"
-                            max_smoothing_duration="0.30"
-                            check_for_collisions="true"/>
-                <AlwaysSuccess/>
-              </Fallback>
-            </Sequence>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
-          </RecoveryNode>
-        </RateController>
+        <!-- 锁存器放在 RateController 外层，使 PipelineSequence 在 action
+             成功/取消时能够直接 halt 并清理它；内部规划仍保持 1 Hz。 -->
+        <TerminalPathLatch path="{path}" goal="{goal}" xy_tolerance="0.30"
+                           path_goal_xy_tolerance="0.075"
+                           path_goal_yaw_tolerance="0.01"
+                           global_frame="map" robot_base_frame="base_footprint"
+                           transform_tolerance="0.20">
+          <RateController hz="1.0">
+            <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathToPose">
+              <Sequence name="ComputeAndOptionallySmoothPath">
+                <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+                <!-- 平滑是质量增强而不是安全门禁：失败时 AlwaysSuccess
+                     保留 ComputePathToPose 写入的原路径继续执行。 -->
+                <Fallback name="UseRawPathWhenSmoothingFails">
+                  <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}"
+                              smoother_id="simple_smoother"
+                              max_smoothing_duration="0.30"
+                              check_for_collisions="true"/>
+                  <AlwaysSuccess/>
+                </Fallback>
+              </Sequence>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            </RecoveryNode>
+          </RateController>
+        </TerminalPathLatch>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>

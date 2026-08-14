@@ -12,7 +12,7 @@
 
 ### 订阅话题
 
-* `cloud_in` (`sensor_msgs/msg/PointCloud2`) — 输入点云。若 `scan` 话题没有至少一个订阅者，则不处理任何输入。
+* `cloud_in` (`sensor_msgs/msg/PointCloud2`) — 输入点云。默认仅在 `scan` 至少有一个订阅者时处理；设置 `always_subscribe=true` 后持续处理。
 
 ### 参数
 
@@ -22,6 +22,7 @@
 * `angle_max`（double，默认：π）— 最大扫描角度，单位弧度。
 * `angle_increment`（double，默认：π/180）— 激光扫描分辨率，单位弧度/每射线。
 * `queue_size`（double，默认：检测到的 CPU 核心数）— 输入点云队列大小。
+* `always_subscribe`（boolean，默认：false）— 为 `true` 时持续订阅输入点云，不使用输出订阅者数量控制 lazy 订阅。适合 Collision Monitor 等要求 `/scan` 不能因 ROS 图订阅变化而中断的安全链；普通转换任务保留默认值即可。
 * `scan_time`（double，默认：1.0/30.0）— 扫描周期，单位秒。仅用于填充输出 LaserScan 消息的 scan_time 字段。
 * `range_min`（double，默认：0.0）— 返回的最小距离，单位米。
 * `range_max`（double，默认：1.8e+308）— 返回的最大距离，单位米。

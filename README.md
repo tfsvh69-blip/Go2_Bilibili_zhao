@@ -383,11 +383,83 @@ ros2 run go2_navigation health_check --mode online_slam --localization amcl
 无限拉长表示 AMCL 航向失信；导航安全监督会锁速并提示当前标准差，防止错误的
 `map -> odom` 继续驱动机器人。重新定位前先停止目标，再准确设置位置和箭头朝向。
 
-默认规划/控制链为 `SmacPlanner2D → SmoothPath(SimpleSmoother) → RPP`
-（前向优先，`vx≤0.27 m/s`）。`forward_mppi` 是 DiffDrive 圆弧对照档，
+默认规划/控制链为
+`SmacPlanner2D → SmoothPath(SimpleSmoother) → RotationShimController(RPP)`。
+外层 Rotation Shim 在到达 XY 容差后用零线速度完成目标航向，内部 RPP 继续负责
+前向路径跟随（`vx≤0.27 m/s`）。行为树的 `TerminalPathLatch` 会先确认当前路径确属
+本次目标：路径末端允许 `0.075 m` 栅格中心误差和 `0.01 rad` 数值航向误差，再用实时
+`map→base_footprint` TF 确认机器人同时进入原始目标与路径末端的 `0.30 m` XY 容差。
+首次进入后保持锁存并暂停 1 Hz 重规划，防止 Humble 的 `setPlan()` 重置终点定向状态。
+定位短时漂出边界不会解除锁存，新目标、行为树 `halt()` 或 recovery 会清除锁存；同一
+XY 只改变 yaw 也必须先得到一条新路径。Smac 的 `GridBased.tolerance=0.0`，不可达的
+原始目标会明确规划失败，不再静默选择 `0.25 m` 内的替代终点。
+`forward_mppi` 是 DiffDrive 圆弧对照档，
 `omni_mppi` 保留原有全向对照档，两者均不是默认。RViz 中绿色
 `Raw Global Plan` 来自 `/plan`，蓝色 `Controller Path (Smoothed)` 来自
 `/received_global_plan`，可用来区分“原始路线”与“实际跟随路线”。
+
+默认 shim 参数为 `rotate_to_goal_heading=true`、`closed_loop=false`、转速
+`0.45 rad/s`、角加速度 `1.0 rad/s²`、路径进入/退出阈值 `1.40/0.40 rad`、采样距离
+`0.50 m`、旋转碰撞预测 `1.0 s`；内层 RPP 的 `use_rotate_to_heading=false`，普通弯道
+保持前进画弧，仅接近侧后方的路径由外层 shim 停车对齐。普通到达标准为
+`0.30 m/0.15 rad`。可这样回读，
+开环这里只表示 shim 按角加速度约束生成命令，不是关闭姿态闭环；目标 yaw 仍由 TF 和
+GoalChecker 闭环判定。这样可避免把当前仿真里程计的 1 秒角速度窗口当成低延迟反馈。
+不应通过放宽 yaw 或关闭碰撞保护解决终点摆动：
+
+```bash
+ros2 param get /controller_server FollowPath.primary_controller
+ros2 param get /controller_server FollowPath.rotate_to_goal_heading
+ros2 param get /controller_server FollowPath.closed_loop
+```
+
+终点转向异常时先取消当前目标，并通过安全输入 `/cmd_vel_teleop` 验证底层；导航运行时
+不得直接发布最终 `/cmd_vel`。先在一个终端启动只读诊断，再在另一个终端发布 5 秒命令：
+
+```bash
+ros2 run go2_navigation rotation_diagnostics \
+    --mode manual --duration 10 --expected-wz 0.45
+
+timeout 5 ros2 topic pub -r 20 /cmd_vel_teleop geometry_msgs/msg/Twist \
+    "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.45}}"
+
+# 单个导航目标开始前运行；它不发布速度或目标
+ros2 run go2_navigation rotation_diagnostics \
+    --mode navigation --acquire-timeout 120 --duration 10 \
+    --xy-tolerance 0.30 --yaw-tolerance 0.15
+```
+
+Goal Guard 会把已接受的原始 RViz 目标以 transient-local QoS 发布到只读话题
+`/navigation/accepted_goal`。诊断分别报告“机器人→原始目标”“机器人→路径末端”和
+“路径末端→原始目标”，并统计终点前实际重规划频率以及锁存后的 `/plan` 数量；据此
+区分上游未产生命令、`twist_mux`/平滑/碰撞层拦截、CHAMP 未执行、`odom`/TF 未反馈、
+替代路径终点和终点锁存后仍被重规划。若 `map→odom` 单次修正超过
+`0.10 m` 或 `0.10 rad`，应先处理地图/AMCL，而不是继续调控制器。
+navigation 模式会等待新目标和双终点 XY 容差，进入后最多采样 `--duration` 秒；action
+成功后再观察 1 秒停稳误差。`--acquire-timeout` 内尚未进入终点时返回
+`INCOMPLETE`（退出码 2），不会再把途中距离误写成终点失败。多行命令的反斜杠 `\`
+必须是行末最后一个字符，后面不能留空格。
+
+2026-08-13 的无界面同 XY `+90°` 实测中，action 在 `4.8 s` 内 `SUCCEEDED`；四级速度
+终点段均为 `max|linear.x|=0`、`max|angular.z|=0.45 rad/s`、0 次换向，锁存后
+`/plan=0`，证明本轮重规划/控制器反复切换已消除。但该次 AMCL 随后产生
+`0.414 m` 单步 `map→odom` 修正，停稳后机器人到原始目标约 `1.23 m`，因此整体验收仍
+判为 FAIL，需重新校准 `home_02` 初始位姿或地图定位后再做 12 目标测试。
+
+后续现场已经确认终点不再来回左右摆动。一次旧诊断在采样结束时显示机器人到目标
+`5.401 m`、路径末端到目标仅 `0.010 m`，且 `map→odom` 单步只有
+`0.020 m/0.009 rad`；这代表采样窗口结束时仍在途中，不是终点控制或 AMCL 失败。
+
+本机纯旋转基线已经实际执行，但当前判定为 **FAIL**，所以尚未继续做新实现的 12 目标
+验收。四级速度链能把 `±0.45 rad/s` 原样送至 `/cmd_vel`，真值、`/odom` 和
+`odom→base_footprint` 累计 yaw 误差在 `0.03 rad` 内；失败集中在 CHAMP/Gazebo 实体层：
+`+0.45 rad/s` 稳态增益约 `33%`，`-0.45 rad/s` 约 `94%`，两方向每 90° 等效平移漂移
+约 `0.38/0.13 m`，均超过 `0.10 m` 标准。把四脚摩擦系数从 `0.6` 单变量提高到 `1.0`
+没有改善正向增益，试验值已撤回。进一步 A/B 发现将 CHAMP `stance_depth` 从 `0.01 m`
+改为上游常用的 `0.0 m` 后，双向结果改善到约 `70%/61%`、`0.11/0.06 m/90°`；该修改
+已保留，但反向增益和正向漂移仍略未达标。PID、支撑时长和抬脚高度试验均无完整收益并
+已撤回。现阶段仍应校准 CHAMP 原地旋转步态和接触模型，不能继续用 Nav2 容差或控制器
+参数补偿。
 
 `tuning_gui:=true` 会同时打开标准 `rqt_reconfigure` 窗口。只建议在
 `/controller_server` 中逐项调整 `desired_linear_vel`、lookahead、
@@ -408,7 +480,9 @@ CHAMP 四足步态和 Gazebo 物理实际运动；该真值反馈只用于仿真
 
 固定地图的 `/map` 由 `map_server` 从 PGM 读取，本来就不会随机器人移动扩展。
 在线模式使用 `pointcloud_to_laserscan + slam_toolbox`，RViz 中的 `Live SLAM Map`
-会随观测扩大；结束时使用：
+会随观测扩大。导航配置令 `pointcloud_to_laserscan.always_subscribe=true`，保证
+Collision Monitor 等订阅者短暂重连后 `/scan` 仍持续输出；该选项默认关闭，不改变组件
+在其他场景中的 lazy 订阅行为。结束时使用：
 
 ```bash
 bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
@@ -523,6 +597,12 @@ ros2 topic echo --once /ndt_pose
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
 - 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + RPP/MPPI 与安全链
   已接通；在线模式已通过 12 次连续短目标。10 分钟压力、移动障碍和完整失效注入仍待完成。
+- 默认 `forward_rpp` 已改为 Rotation Shim、实时 TF 终点路径锁存、0.45 rad/s 开环限加速度
+  定向，并提供五层只读诊断。旧实现的两个内部同 XY `±90°` 专项目标曾成功，但新锁存
+  的纯旋转基线仍因 CHAMP 实体旋转增益/漂移未全部达标而失败；`stance_depth=0.0 m`
+  已显著缩小方向差异，但仍没有继续执行固定
+  `home_02` 12 目标；此前 AMCL `map→odom` 米级修正还曾使精确 `180°` 目标进入障碍
+  附近，固定图验收不能记为通过。
 - NDT 正式使用前必须准备有效 `GlobalMap.pcd` 并设置合理初始位姿。
 - Unitree 兼容桥只保证所列消息、话题和请求的接口级兼容，不模拟 `/lowcmd`、
   BMS、无线遥控、真实足底力、障碍距离或真机固件的平衡与安全策略。

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="620" viewBox="0 0 1120 620">
+  <defs>
+    <marker id="arrow-orange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#f97316"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#16a34a"/>
+    </marker>
+    <style>
+      .title { font: 700 28px sans-serif; fill: #111827; }
+      .head { font: 700 21px sans-serif; fill: #111827; }
+      .body { font: 17px sans-serif; fill: #1f2937; }
+      .small { font: 15px sans-serif; fill: #374151; }
+      .mono { font: 16px monospace; fill: #111827; }
+    </style>
+  </defs>
+
+  <rect width="1120" height="620" fill="#f8fafc"/>
+  <text x="38" y="48" class="title">终点位置已到，但航向控制在容差边界来回切换</text>
+
+  <!-- RViz 风格的局部地图示意。 -->
+  <g transform="translate(38 82)">
+    <rect x="0" y="0" width="510" height="455" rx="8" fill="#d1d5db" stroke="#64748b" stroke-width="2"/>
+    <path d="M0 0 H72 V300 H330 V455 H0 Z" fill="#55d6d2" opacity="0.95"/>
+    <path d="M72 0 V280 H350 V455" fill="none" stroke="#ef5863" stroke-width="22"/>
+    <path d="M45 0 V310 H330 V455" fill="none" stroke="#8b00b8" stroke-width="9" stroke-dasharray="18 13"/>
+
+    <!-- 0.30 m 到达容差圈。 -->
+    <circle cx="235" cy="230" r="78" fill="#fef3c7" fill-opacity="0.38"
+            stroke="#f59e0b" stroke-width="3" stroke-dasharray="10 8"/>
+    <text x="105" y="335" class="small">0.30 m XY 容差圈</text>
+
+    <!-- 机器人与目标箭头。 -->
+    <g transform="translate(220 220) rotate(-42)">
+      <rect x="-58" y="-34" width="116" height="68" rx="16" fill="#dbeafe" stroke="#334155" stroke-width="4"/>
+      <circle cx="-42" cy="-34" r="9" fill="#64748b"/>
+      <circle cx="42" cy="-34" r="9" fill="#64748b"/>
+      <circle cx="-42" cy="34" r="9" fill="#64748b"/>
+      <circle cx="42" cy="34" r="9" fill="#64748b"/>
+      <path d="M20 0 H54" stroke="#2563eb" stroke-width="7" marker-end="url(#arrow-green)"/>
+    </g>
+    <circle cx="235" cy="230" r="13" fill="#dc2626"/>
+    <path d="M235 230 L405 405" stroke="#f97316" stroke-width="9" marker-end="url(#arrow-orange)"/>
+    <text x="337" y="430" class="small">目标 yaw 箭头</text>
+
+    <!-- 旧行为的左右切换。 -->
+    <path d="M155 184 A98 98 0 0 1 300 158" fill="none" stroke="#dc2626" stroke-width="6"
+          marker-end="url(#arrow-red)"/>
+    <path d="M306 286 A98 98 0 0 1 164 296" fill="none" stroke="#dc2626" stroke-width="6"
+          marker-end="url(#arrow-red)"/>
+    <rect x="20" y="372" width="260" height="60" rx="8" fill="#fff" fill-opacity="0.9" stroke="#ef4444"/>
+    <text x="34" y="396" class="body">旧：追位置 ↔ 原地定向</text>
+    <text x="34" y="420" class="small">12 s 内 angular.z 换向 41 次</text>
+  </g>
+
+  <!-- 右侧数据链与正常/异常说明。 -->
+  <g transform="translate(585 90)">
+    <text x="0" y="18" class="head">现场判据</text>
+    <rect x="0" y="38" width="490" height="118" rx="10" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="20" y="68" class="mono">distance ≈ 0.26 m  &lt;  0.30 m</text>
+    <text x="20" y="96" class="mono">yaw error ≈ 2.47 rad / 142°</text>
+    <text x="20" y="124" class="mono">AMCL yaw std = 0.011–0.022 rad</text>
+    <text x="20" y="148" class="small">定位协方差小；摆动发生在 /cmd_vel_nav 上游控制输出</text>
+
+    <text x="0" y="196" class="head">修复后的职责分工</text>
+    <rect x="0" y="216" width="490" height="152" rx="10" fill="#ecfdf5" stroke="#22c55e" stroke-width="2"/>
+    <text x="20" y="246" class="body">TerminalPathLatch：进入 XY 容差后保留本次路径</text>
+    <text x="20" y="276" class="body">Rotation Shim：linear.x = 0，单向缩小 yaw 误差</text>
+    <text x="20" y="306" class="body">RPP：仍负责普通前向路径跟随</text>
+    <text x="20" y="336" class="body">Collision Monitor：仍是最终速度安全防线</text>
+    <path d="M420 330 A58 58 0 1 0 375 235" fill="none" stroke="#16a34a" stroke-width="6"
+          marker-end="url(#arrow-green)"/>
+
+    <text x="0" y="412" class="head">RViz / CLI 怎么判断</text>
+    <rect x="0" y="430" width="490" height="104" rx="10" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="20" y="460" class="body">正常：终点 linear.x 恒为 0，angular.z 不连续反向</text>
+    <text x="20" y="489" class="body">异常：/plan 每秒重置、线速度脉冲、左右反复换向</text>
+    <text x="20" y="518" class="small">若 Gazebo 实体连续而 RViz 跳：改查 map→odom / AMCL</text>
+  </g>
+
+  <text x="38" y="584" class="small">示意图按本次 RViz 现场画面标注；颜色用于帮助定位，最终以 Display 名称、话题和数值为准。</text>
+</svg>

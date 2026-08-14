@@ -6,7 +6,8 @@
 """
 
 import math
-from typing import Optional, Tuple
+from collections import deque
+from typing import Deque, Optional, Tuple
 
 import rclpy
 from geometry_msgs.msg import TransformStamped
@@ -26,6 +27,64 @@ def quaternion_to_yaw(x: float, y: float, z: float, w: float) -> float:
 def normalize_angle(angle: float) -> float:
     """把角度归一化到 ``[-pi, pi)``。"""
     return math.atan2(math.sin(angle), math.cos(angle))
+
+
+class AngularVelocityWindowFilter:
+    """用一段位姿历史估计平面角速度，滤除四足机身的落足摆动。
+
+    ``gazebo_ros_p3d`` 给出的瞬时角速度会包含机身在单个落足周期内的快速
+    左右摆动。它适合观察物理真值，却不适合直接作为控制器的加速度闭环反馈。
+    这里不修改里程计位姿，只用展开后的 yaw 在滑动窗口内求平均斜率。
+    """
+
+    def __init__(
+        self,
+        window_duration: float = 1.0,
+        minimum_duration: float = 0.5,
+    ) -> None:
+        if window_duration <= 0.0:
+            raise ValueError("window_duration 必须大于零")
+        if minimum_duration <= 0.0 or minimum_duration > window_duration:
+            raise ValueError("minimum_duration 必须位于 (0, window_duration] 内")
+        self._window_duration = window_duration
+        self._minimum_duration = minimum_duration
+        self._history: Deque[Tuple[float, float]] = deque()
+        self._last_stamp: Optional[float] = None
+        self._last_yaw: Optional[float] = None
+        self._unwrapped_yaw = 0.0
+
+    def reset(self) -> None:
+        """清空历史；仿真时间回退或重启时重新建立窗口。"""
+        self._history.clear()
+        self._last_stamp = None
+        self._last_yaw = None
+        self._unwrapped_yaw = 0.0
+
+    def update(self, stamp: float, yaw: float) -> float:
+        """加入一个带时间戳的 yaw 样本并返回窗口平均角速度。"""
+        if self._last_stamp is not None and stamp <= self._last_stamp:
+            self.reset()
+
+        if self._last_yaw is None:
+            self._last_stamp = stamp
+            self._last_yaw = yaw
+            self._history.append((stamp, self._unwrapped_yaw))
+            return 0.0
+
+        self._unwrapped_yaw += normalize_angle(yaw - self._last_yaw)
+        self._last_stamp = stamp
+        self._last_yaw = yaw
+        self._history.append((stamp, self._unwrapped_yaw))
+
+        cutoff = stamp - self._window_duration
+        while len(self._history) >= 2 and self._history[1][0] <= cutoff:
+            self._history.popleft()
+
+        oldest_stamp, oldest_yaw = self._history[0]
+        duration = stamp - oldest_stamp
+        if duration < self._minimum_duration:
+            return 0.0
+        return (self._unwrapped_yaw - oldest_yaw) / duration
 
 
 def relative_planar_pose(
@@ -58,6 +117,14 @@ class SimulationOdom(Node):
 
         self._odom_frame = str(self.get_parameter("odom_frame").value)
         self._base_frame = str(self.get_parameter("base_frame").value)
+        self.declare_parameter("angular_velocity_window", 1.0)
+        angular_velocity_window = float(
+            self.get_parameter("angular_velocity_window").value
+        )
+        self._angular_velocity_filter = AngularVelocityWindowFilter(
+            window_duration=angular_velocity_window,
+            minimum_duration=min(0.5, angular_velocity_window),
+        )
         self._origin: Optional[Tuple[float, float, float]] = None
         self._publisher = self.create_publisher(
             Odometry, str(self.get_parameter("odom_topic").value), 10
@@ -120,7 +187,13 @@ class SimulationOdom(Node):
             -current_sine * source_twist.linear.x
             + current_cosine * source_twist.linear.y
         )
-        odometry.twist.twist.angular.z = source_twist.angular.z
+        source_stamp = (
+            float(source.header.stamp.sec)
+            + float(source.header.stamp.nanosec) * 1.0e-9
+        )
+        odometry.twist.twist.angular.z = self._angular_velocity_filter.update(
+            source_stamp, world_yaw
+        )
         odometry.twist.covariance = source.twist.covariance
         self._publisher.publish(odometry)
 

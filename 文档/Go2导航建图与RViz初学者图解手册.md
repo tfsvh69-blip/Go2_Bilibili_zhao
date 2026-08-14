@@ -1,6 +1,6 @@
 # Go2 导航、建图与 RViz 初学者图解手册
 
-> 最后更新：2026-08-12
+> 最后更新：2026-08-13
 > 适用环境：Ubuntu 22.04、ROS 2 Humble、Gazebo Classic 11、Nav2、CHAMP 以及本仓库 `simdog/` 工作空间。
 > 文档目标：看到一个名词、颜色、箭头或状态时，能够回答“它是什么、来自哪里、正常应怎样、异常该查什么”。
 
@@ -430,10 +430,13 @@ AMCL 的粒子可以想成一群侦察员：每个侦察员猜一个位置，拿
 | Nav2 / Navigation2 | ROS 2 导航框架总称 | 规划、控制、行为树、代价图和生命周期 |
 | NavigateToPose | 从当前位姿导航到一个目标位姿的 action | 对外 `/navigate_to_pose` |
 | Goal Guard | 目标门禁 | 检查地图、定位、目标安全后转发到底层 action |
+| Accepted Goal | 已被目标门禁接受的原始 RViz 目标 | transient-local `/navigation/accepted_goal`，供诊断区分用户目标和路径末端 |
 | Planner | 在地图上找一条可行路径 | `SmacPlanner2D` |
 | Raw Global Plan | 规划器刚算出的整条路线 | RViz 绿色 `/plan` |
 | Controller Path (Smoothed) | 实际交给控制器的路线；平滑失败时为原始路线 | RViz 蓝色 `/received_global_plan` |
-| Controller | 根据当前位姿追踪路径并输出速度 | 默认 RPP |
+| Controller | 根据当前位姿追踪路径并输出速度 | 默认 Rotation Shim，内部 RPP |
+| Rotation Shim | 在路径初始朝向或终点朝向需要大转角时接管原地旋转 | 终点保持 `linear.x=0`，完成目标 yaw |
+| Primary Controller | Rotation Shim 内部负责普通路径跟随的控制器 | `FollowPath.primary_controller=RPP` |
 | RPP | Regulated Pure Pursuit，受约束纯追踪 | 前向优先，带碰撞预测 |
 | Lookahead | 控制器在路径前方选择的追踪点/弧 | 太近易抖，太远易切弯 |
 | SmoothPath | Nav2 行为树调用的路径平滑 action | 现在已接到每次全局计划后 |
@@ -441,14 +444,16 @@ AMCL 的粒子可以想成一群侦察员：每个侦察员猜一个位置，拿
 | MPPI | 基于采样预测的模型预测路径积分控制器 | `forward_mppi`/`omni_mppi` 对照档 |
 | Behavior Tree / BT | 按条件组织规划、跟随、恢复和取消 | `bt_navigator` |
 | Recovery | 主导航失败后的恢复行为 | 清图、旋转、后退、等待等 |
-| Goal Checker | 判定是否已到目标 | 普通档 0.30 m / 0.25 rad |
+| Goal Checker | 判定是否已到目标 | 普通档 0.30 m / 0.15 rad |
 | PoseProgressChecker | 判定平移或转向是否取得进展 | 0.10 m 或 0.15 rad 任一达到即刷新 |
+| TerminalPathLatch | 进入终点 XY 容差后冻结当前目标的路径 | 防止 1 Hz `setPlan()` 重置 shim；新目标仍重规划 |
 | Tolerance | 容许误差 | 不是越小越好；小于四足落足波动会在终点反复修正 |
 | ETA | Estimated Time of Arrival，预计到达时间 | 只能作为估计，不是安全保证 |
 | Feedback | action 执行中的进度信息 | executing、distance remaining 等 |
 | Succeeded | action 成功到达 | 通过 goal checker |
 | Canceled | 用户/系统取消 | 与失败不同 |
 | Aborted | action 因规划、控制、进度或服务器故障终止 | 必须结合日志找具体原因 |
+| Incomplete | 诊断采样结束时目标仍在执行或尚未进入终点 | 不是导航 action 失败；延长获取期限后复测 |
 
 ### 目标不是只有一个点
 
@@ -457,7 +462,8 @@ RViz `Nav2 Goal` 拖出的箭头同时包含：
 - x/y：狗最后应该站在哪里。
 - yaw：狗最后应该朝哪个方向。
 
-只点击不正确拖方向，可能出现“位置到了但一直转”的现象。普通目标容差 `0.30 m / 0.25 rad` 表示允许站位约差 30 cm、方向约差 14°。
+只点击不正确拖方向，可能出现“位置到了但一直转”的现象。普通目标容差
+`0.30 m / 0.15 rad` 表示允许站位约差 30 cm、方向约差 8.6°。
 
 ### `Failed to make progress`
 
@@ -471,67 +477,200 @@ RViz `Nav2 Goal` 拖出的箭头同时包含：
 
 ### 10.1 案例：已经到目标附近，却为了最终朝向来回摆动
 
-肉眼现象：不要求明显转向的目标容易成功；需要在终点改变朝向时，机器人长期停留在约
-`0.3 m`，前后/左右调整，随后可能后退恢复，再重新接近。
+先确保安全：在 RViz 点 `Navigation 2 -> Cancel`；如果仍在摆动，调用
+`/navigation/stop`，确认 `/cmd_vel` 已归零后再靠近机器人或修改参数。
 
-2026-08-12 现场数据表明，这次不是 AMCL 再次乱跳：
+肉眼现象如下图：机器人位置已经进入目标圆，但目标箭头要求它改变较大的最终朝向；
+机身一会向左、一会向右，还夹带短促前进，始终不能稳定对准箭头。
 
-```text
-AMCL 标准差：x≈0.011 m、y≈0.029 m、yaw≈0.016 rad（约 0.9°）
-目标：(-10.125, -1.635, yaw≈-179°)
-机器人旋转期间距目标：0.231 m → 0.263 m → 0.272 m
-普通 xy_goal_tolerance：0.25 m
-```
+![终点航向摆动与 Rotation Shim 修复示意](images/rviz_guide/terminal_yaw_oscillation_annotated.svg)
 
-机器人围绕 `0.25 m` 边界进进出出。Humble RPP 只有在几何距离小于位置容差时才进入
-“线速度归零、原地对准目标 yaw”；一旦四足原地踏步带来几厘米平移、距离又超过
-`0.25 m`，它就重新追位置。像把车停进一个直径很小的圆圈：车头刚开始调正，轮胎挪动
-又让车身越线，于是司机重新挪位置，永远在“停车”和“摆正车头”之间切换。
-
-第二个问题是当前 `SimpleProgressChecker` 只把平移超过 `0.10 m` 算作进展。原地转向即使
-yaw 正在持续接近目标，也会在 15 秒后触发 `Failed to make progress`。现场日志随后确实
-进入 `BackUp`，所以观察到的 `linear.x=-0.05 m/s` 是恢复后退，不是 RPP 的终点动作。
-
-业内通常按以下层次解决，而不是只把 yaw 容差无限放大：
-
-1. **位置与朝向要有滞回或足够大的接受圈。** 新版 RPP 可锁存“XY 已到达”；
-   Humble 1.1.20 没有该 RPP 参数，所以本项目先用实测可重复的 `0.30 m`
-   位置容差，避免把四足落足波动当成重新追位置的理由。
-2. **进度检查必须承认“转向也是进展”。** 把 `SimpleProgressChecker` 换成上游已有的
-   `nav2_controller::PoseProgressChecker`，同时检查平移和 yaw 变化，避免正常原地转向被
-   误判卡死并触发 BackUp。
-3. **终点进入条件使用符合平台能力的容差和滞回。** 四足原地踏步会带来数厘米位置漂移；
-   通用导航常先实测 12 个终点的漂移分布，再把 XY 容差设为“可重复达到的范围”，而不是
-   追求纸面上很小的数字。Go2 仿真建议先对照 `0.30 m` 与 `0.35 m`，yaw 仍保留
-   `0.25 rad`，一次只改一个值并记录最终误差。
-4. **标定最小连续角速度。** 分别测试 `0.15/0.20/0.25/0.30 rad/s` 的原地旋转；选择能够
-   持续克服 CHAMP/Gazebo 接触阻力的最小值再加小余量。角速度过大容易越过目标后反向，
-   太小则腿在动但机身不持续转动。当前 `0.45 rad/s` 应作为待对照值，不直接认定最优。
-5. **只有任务不关心最终朝向时才忽略 yaw。** 可使用 `PositionGoalChecker`，或上层只发送
-   位置目标。若是充电、对接、面向操作台等强姿态任务，应使用专门 docking/final-alignment
-   流程，而不是牺牲通用导航的稳定性换厘米级对接精度。
-
-本项目已实施的优先顺序是：
+2026-08-13 的现场证据把“定位不准”和“控制器切换”分开了：
 
 ```text
-PoseProgressChecker
-  → 0.30 m XY / 0.25 rad yaw 稳定容差
-  → RPP 普通弯道连续跟随，只在超过 0.85 rad 时原地对齐
-  → CHAMP 最小连续角速度阶梯测试
+目标距离：约 0.26 m，已经进入 xy_goal_tolerance=0.30 m
+剩余 yaw 误差：约 2.47 rad（142°）
+12 秒 /cmd_vel_nav.angular.z 换向：41 次，并夹带非零 linear.x
+AMCL yaw 标准差：0.011–0.022 rad（约 0.6–1.3°）
+第二次采样：路径末端距目标约 0.298 m，12 秒收到 40 条 /plan
+第二次采样：/cmd_vel_nav 最大 linear.x=0.163 m/s，换向 9 次
 ```
 
-不优先选择：关闭碰撞检测、不断增加 recovery、直接换掉整个 Nav2 控制栈，或把 yaw 容差
-放大到任何朝向都算成功。DWB 的 `RotateToGoalCritic`、MPPI 的角度 critic、Smac
-Hybrid-A*/State Lattice 是有效替代路线，但对当前能原地转向、主体路径跟随已正常的 Go2
-而言，不宜在首轮同时替换整套规划控制链。`RotationShimController` 也是可选上游方案，
-但 Humble 1.1.20 在每次 `setPlan()` 时会重置其位置锁存；当行为树以 1 Hz
-重规划时，不适合未经专项验证就直接作为本次默认修复。
+AMCL 当时对航向很有把握，Collision Monitor 也没有改写这段上游
+`/cmd_vel_nav`，所以根因在控制状态机：Humble RPP 在 XY 容差边界直接切换
+“继续追位置”和“停下对准目标 yaw”。四足原地踏步造成几厘米位置变化时，机器人会反复
+跨过 `0.30 m` 边界，控制输出就像司机不断在“挪车”和“摆正车头”之间改主意。
 
-官方源码依据：Humble RPP 的终点旋转条件直接比较当前距离与 goal checker 的 XY 容差；
-`PoseProgressChecker` 会在平移或角度任一取得足够变化时刷新进度；Humble
-`RotationShimController` 的 `rotate_to_goal_heading` 可在 XY 到达后执行带加速度和碰撞
-检查的原地旋转。新发行版 RPP 又增加了 `stateful` 参数来锁存“XY 已到达”状态，但本机
-Humble 1.1.20 的 RPP 没有该运行参数，不能把新版文档字段直接抄进当前 YAML。
+本项目现在的数据链是：
+
+```text
+约 1 Hz ComputePathToPose + SmoothPath
+        │
+        ├─ GridBased.tolerance=0：不可达原始目标明确失败
+        ├─ 新目标：必须先得到一条属于它的新路径
+        ├─ 还没同时接近原始目标和路径末端：继续按周期规划
+        └─ 两个距离都进入 0.30 m：TerminalPathLatch 保留当前目标路径
+                                  │
+                                  ▼
+RotationShimController（外层）── 终点 linear.x=0，只对准目标 yaw
+        │
+        └─ primary_controller=RPP（普通路径仍由它前向跟随）
+                                  │
+                                  ▼
+/cmd_vel_nav → twist_mux → velocity_smoother → collision_monitor → /cmd_vel
+```
+
+`TerminalPathLatch` 不是“永远记住到过终点”。它允许路径末端与目标有 `0.075 m` 的
+栅格中心误差和 `0.01 rad` 的数值 yaw 误差，但 frame 必须一致；新目标即使 XY 相同而
+yaw 不同，也必须先生成一条新路径。路径确属当前目标后，它查询实时
+`map→base_footprint` TF，只有机器人到原始目标、到路径末端两个距离都进入 `0.30 m`
+才锁存。锁存后定位短时漂出边界也不恢复规划；新目标、行为树 `halt()` 或 recovery 才
+清除状态。TF 暂不可用且尚未锁存时会限频报警并继续规划，不会误用旧目标。
+
+这里还有一个不直观的 BT 生命周期问题：旧节点在每次规划成功后调用 `resetChild()`，
+等价于每次都把 `RateController` 的秒表拨回“首次运行”，所以名义 1 Hz 实际会变成每个
+行为树周期都规划。新节点保留秒表状态；真实 `RateController` 自动化测试中连续快速
+tick 10 次只执行 1 次规划。这样才真正避免 Humble Rotation Shim 每次 `setPlan()` 重置
+内部终点位置检查器。
+
+默认参数及物理意义：
+
+| 参数 | 当前值 | 正常可见变化 | 过小/过大的表现 |
+|---|---:|---|---|
+| `rotate_to_goal_heading` | `true` | XY 到达后由 shim 完成目标 yaw | 关闭后又由内部 RPP 处理终点航向 |
+| `closed_loop` | `false` | shim 按限加速度开环生成角速度 | 避免把 1 s 角速度滑窗误当低延迟反馈；目标姿态仍由 TF 闭环 |
+| `rotate_to_heading_angular_vel` | `0.45 rad/s` | 保持单向、可持续原地转动 | 太小克服不了接触阻力，太大容易过冲 |
+| `max_angular_accel` | `1.0 rad/s²` | 角速度平滑爬升/下降 | 太小响应慢，太大冲击明显 |
+| `angular_dist_threshold` | `1.40 rad` | 接近侧后方路径时先原地对齐 | 太小会把普通弯道切成走走停停 |
+| `angular_disengage_threshold` | `0.40 rad` | 低于此角差后退出路径初始对齐 | 设得接近进入阈值容易来回切换 |
+| `forward_sampling_distance` | `0.50 m` | 用前方半米路径判断朝向 | 太短受局部折线影响，太长可能忽略近处弯道 |
+| `simulate_ahead_time` | `1.0 s` | 旋转前预测碰撞 | 太短预见不足，太长可能在窄处过于保守 |
+
+`general_goal_checker` 为 `0.30 m/0.15 rad`，`PoseProgressChecker`、速度平滑、RPP
+碰撞预测和 Collision Monitor 都没有关闭。没有选择放宽 yaw、增加 BackUp 或取消碰撞保护，
+因为这些做法只会掩盖状态反复切换。
+
+先做纯旋转基线，这相当于“暂时把自动驾驶大脑拿掉，只检查方向盘、车轮和里程表”。在
+RViz 点击 `Navigation 2 → Cancel`，确认 `/pause_navigation=false`，并保证四周至少
+`0.8 m` 无障碍。两个终端分别执行：
+
+```bash
+# 终端 A：只读诊断，不会发布速度
+ros2 run go2_navigation rotation_diagnostics \
+  --mode manual --duration 10 --expected-wz 0.45
+
+# 终端 B：通过完整安全链发纯旋转；不得直接发布 /cmd_vel
+timeout 5 ros2 topic pub -r 20 /cmd_vel_teleop geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.45}}"
+```
+
+依次测试 `±0.15、±0.25、±0.35、±0.45 rad/s`。`0.35/0.45` 两档应在左右两个方向都
+达到至少 70% 执行增益；`/odom`、`odom→base_footprint` 与真值累计 yaw 相差不超过
+`0.03 rad`。若这里失败，应停下 Nav2 参数调整，先修相应底层。
+
+本机 2026-08-13 的结果正是这种“底层基线失败”：`/cmd_vel` 已准确收到
+`±0.45 rad/s`，真值、`/odom` 和 TF 的 yaw 也互相吻合，但 Gazebo 实体对
+`+0.45 rad/s` 只执行出约 `33%`，反向约 `94%`；折算每 90° 还分别漂移约
+`0.38 m/0.13 m`。这说明“方向盘命令和里程表”没有断，而是四脚落足产生的实体转动
+不对称。把脚底摩擦从 `0.6` 提到 `1.0` 没有改善，已恢复原值；下一步应针对 CHAMP
+步态轨迹、左右落足和 Gazebo 接触逐项标定，而不是放宽 `yaw_goal_tolerance`。
+
+分层 A/B 找到了一项明确改善：`stance_depth` 原来让支撑脚在步态轨迹中额外向下压
+`0.01 m`，改成 `0.0 m` 后，正/反向变为约 `70%/61%`，漂移变为约
+`0.11/0.06 m/90°`。可把它理解为“脚已经踩地后不再继续向地板里压一厘米”，侧滑因此
+明显减少。这也是 CHAMP Go1 上游 gait 的常用基线，所以当前保留；但反向增益和正向漂移
+仍略未达到门槛，不能写成 PASS。提高脚底摩擦、改成官方 Go1 PID、把支撑时长改成
+`0.20/0.30 s` 或把抬脚高度改成 `0.05 m` 都没有同时改善两项指标，已全部撤回。
+
+五层故障树：
+
+```text
+肉眼看见“踏步但方向不到位”
+  ├─ /cmd_vel_nav 没有 wz：控制器/目标状态没有产生命令
+  ├─ 上游有、/cmd_vel 没有：twist_mux/平滑/Collision Monitor 拦截
+  ├─ /cmd_vel 有、Gazebo 机身不转：CHAMP gait、接触或摩擦问题
+  ├─ 机身转、odom/TF 不转：里程计反馈链问题
+  └─ 上述都正常、终点 /plan 仍以 1 Hz 更新：终点状态/锁存问题
+```
+
+导航模式 CLI 观察步骤：
+
+```bash
+# 1. 参数应回读出外层 shim、内部 RPP 和终点旋转设置
+ros2 param get /controller_server FollowPath.plugin
+ros2 param get /controller_server FollowPath.primary_controller
+ros2 param get /controller_server FollowPath.rotate_to_goal_heading
+ros2 param get /controller_server FollowPath.closed_loop
+
+# 2. 发送目标前或导航途中启动；新目标会重新开始 120 s 获取计时
+ros2 run go2_navigation rotation_diagnostics \
+  --mode navigation --acquire-timeout 120 --duration 10 \
+  --xy-tolerance 0.30 --yaw-tolerance 0.15
+
+# 3. 需要保留原始证据时记录四级速度、规划、真值、里程计和 AMCL
+ros2 bag record /plan /cmd_vel_teleop /cmd_vel_nav /cmd_vel_switched \
+  /cmd_vel_smoothed /cmd_vel /odom/ground_truth /odom /tf /amcl_pose \
+  /navigation/accepted_goal /pause_navigation
+
+# 4. 区分实体真值移动与 AMCL 修正：两个 TF 都要看
+ros2 run tf2_ros tf2_echo odom base_footprint
+ros2 run tf2_ros tf2_echo map odom
+```
+
+正常表现是：进入终点定向后 `linear.x` 保持零，`angular.z` 只朝缩小 yaw 误差的方向，
+`/plan` 不再每秒重置 FollowPath，最终 action 为 `SUCCEEDED`。异常表现包括：重新出现连续
+正负换向、非零线速度脉冲、`Failed to make progress`、`BackUp`，或 Gazebo 实体不动而
+`map -> odom` 明显跳变；最后一种属于定位链，不能再靠控制器参数补偿。
+
+新诊断会分别打印三组距离，可以把问题像对账一样分开：机器人到原始目标超差说明最终
+用户要求没满足；机器人到路径末端超差说明路径跟随/定位有问题；路径末端到原始目标超过
+`0.075 m/0.01 rad` 说明规划结果不属于原始目标。`/navigation/accepted_goal` 使用
+transient-local QoS，所以诊断稍晚启动也能读到最近一次已接受目标。
+
+navigation 诊断里的 `--acquire-timeout` 是“最多等多久进入终点”，`--duration` 是“进入
+终点后最多记录多久”，两者不要混为一谈。收到新目标时获取期限会重新开始；action 成功
+后继续观察 1 秒再计算停稳误差。如果期限到时还在途中，输出 `INCOMPLETE` 和退出码 2，
+不会拿途中 `5 m` 的距离去判定终点失败。多行 Bash 命令中的反斜杠 `\` 必须紧贴换行，
+后面不能再留空格，否则下一行可能不会作为同一条命令执行。
+
+现场曾出现“机器人→目标 `5.401 m`、路径末端→目标 `0.010 m`、`map→odom` 单步
+`0.020 m/0.009 rad`”的输出：路径与用户目标吻合、定位也稳定，只是 30 秒结束时机器人
+仍在途中。它应该归类为 `INCOMPLETE`，不能据此调整 AMCL 或终点控制器。
+
+2026-08-13 的无界面同 XY `+90°` 实测得到：action `4.8 s` 成功，四级速度终点段
+`linear.x=0`、`max|angular.z|=0.45 rad/s`、0 次换向，锁存后 `/plan=0`。这说明控制
+状态机修复有效。可是同次 AMCL 出现 `0.414 m` 单步 `map→odom` 修正，停稳后机器人到
+原始目标约 `1.23 m`；因此这次整体验收仍是 FAIL，失败层是地图/AMCL，而不是继续调整
+Rotation Shim、RPP 或 GoalChecker。
+
+当前实测边界必须区分：旧版锁存曾让连续两个同一 XY 的内部 `±90°` 目标成功，随后
+`home_02` 的 AMCL 在原地转动中发生 `map→odom` 米级修正，精确 `180°` 目标未完成。
+当前实时 TF 锁存、0.45 rad/s 和 `closed_loop=false` 已通过自动化测试；纯旋转双向
+基线已实测但没有通过实体增益与漂移门槛，所以按规则没有继续运行新实现的 12 目标。
+若诊断显示 `map→odom` 单次修正超过 `0.10 m` 或 `0.10 rad`，归类为地图/AMCL
+问题，不能继续用控制参数补偿。
+
+另一个容易混淆的安全现象是“点云仍在，但 `/scan` 停了”。`/velodyne_points` 是原始
+三维点云，`/scan` 是投影后供二维代价图和 Collision Monitor 使用的激光扫描；前者正常
+不代表后者正常。导航档现在把 `pointcloud_to_laserscan.always_subscribe` 设为 `true`，
+让转换器不因 RViz 或临时诊断订阅者离开而停止订阅点云。正常时 `/scan` 持续约 6–7 Hz；
+异常时 `/pause_navigation` 会变为 `true`，此时应先取消目标并检查：
+
+```bash
+ros2 topic hz /velodyne_points
+ros2 topic hz /scan
+ros2 topic echo --once /pause_navigation
+```
+
+上游依据：[Rotation Shim 官方说明](https://docs.nav2.org/configuration/packages/configuring-rotation-shim-controller.html)、
+[Humble RPP 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_regulated_pure_pursuit_controller/src/regulated_pure_pursuit_controller.cpp)。
+`RotationShimController`、RPP 和 Nav2 BT 插件均沿用上游 Apache-2.0 组件；本项目新增的
+`TerminalPathLatch` 是 BSD-3-Clause 的薄行为树装饰节点。外部
+[Go2 + CHAMP 项目](https://github.com/arjun-sadananda/go2_nav2_ros2) 提到过状态估计的
+里程计比例误差，但本项目导航 `/odom` 来自 `/odom/ground_truth` 适配器，因此只采用其
+分层排障思路，不复制“速度乘倍率”的补丁。步态参数对照采用
+[CHAMP robots 的 Go1 gait 配置](https://github.com/chvmp/robots/blob/master/configs/go1_config/config/gait/gait.yaml)
+（BSD-3-Clause）；只保留本机 A/B 同样有收益的 `stance_depth=0.0`。
 
 ### 10.2 案例：路线不圆滑，走一段就原地转一次
 
@@ -540,10 +679,11 @@ Humble 1.1.20 的 RPP 没有该运行参数，不能把新版文档字段直接�
 - `SmacPlanner2D` 画出的 `/plan` 决定路线点是否像折线。
 - RPP 决定是沿弧线跟路，还是停下原地对齐。
 
-旧配置的 `rotate_to_heading_min_angle=0.35 rad`（约 20°）太小，普通转弯也会
-触发“停车转向”。现在基线为 `0.85 rad`（约 49°），并将原本没有
-接入行为树的 `SmoothPath(SimpleSmoother)` 接在每次规划后。平滑失败只退回
-原始有效路径，不会因为“不够好看”就立即 abort。
+旧配置让外层 Rotation Shim 和内层 RPP 都以 `0.85 rad`（约 49°）决定是否停车旋转，
+1 Hz 新路径容易让两层重复作出相同决定。现在内部 RPP 的 `use_rotate_to_heading=false`，
+普通弯道只画弧；外层 shim 的门槛提高到 `1.40 rad`（约 80°），只有前方路径接近侧后方
+才停车对齐，终点 yaw 仍由 shim 负责。`SmoothPath(SimpleSmoother)` 继续在每次规划后
+工作，平滑失败只退回原始有效路径。
 
 RViz 观察方法：
 
@@ -568,8 +708,9 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 | `desired_linear_vel` | 0.27 m/s | 更快，转弯过冲风险上升 | 更稳，但可能低于连续行走速度 |
 | `lookahead_dist` | 0.55 m | 弧线更圆，也更容易切弯 | 贴路更准，可能摇头 |
 | `max_lookahead_dist` | 0.80 m | 转向更早 | 转向更贴近弯点 |
-| `rotate_to_heading_min_angle` | 0.85 rad | 更少原地转 | 更频繁先对齐再前进 |
-| `rotate_to_heading_angular_vel` | 0.35 rad/s | 转得快但可能越过目标 | 更细腻，过小可能克服不了接触阻力 |
+| `angular_dist_threshold` | 1.40 rad | 只有更接近后方才原地转 | 普通弯道更容易停车对齐 |
+| `use_rotate_to_heading` | false | 内层 RPP 不再停车旋转 | true 会与外层 shim 形成两套转向决定 |
+| `rotate_to_heading_angular_vel` | 0.45 rad/s | 转得快但可能越过目标 | 更细腻，过小可能克服不了接触阻力 |
 | `max_angular_accel` | 1.0 rad/s² | 转向响应快、冲击大 | 启停圆滑、响应慢 |
 
 这些改动只在本次进程内生效，重启就回到 YAML 基线。插件类型、
@@ -704,8 +845,8 @@ ros2 control list_controllers
 | `controller_frequency` | 10 Hz | 转向和避障反应迟钝 | 超过传感器/CPU能力会频繁 deadline miss |
 | `desired_linear_vel` | 0.27 m/s | 四足可能克服不了接触阻力 | 转弯、制动困难 |
 | `min_approach_linear_velocity` | 0.10 m/s | 终点前走走停停 | 可能冲过目标 |
-| `xy_goal_tolerance` | 0.25 m | 为最后几厘米反复挪动 | 停得离目标较远 |
-| `yaw_goal_tolerance` | 0.25 rad | 终点反复左右摆头 | 最终朝向偏差明显 |
+| `xy_goal_tolerance` | 0.30 m | 为最后几厘米反复挪动 | 停得离目标较远 |
+| `yaw_goal_tolerance` | 0.15 rad | 终点修正更久、过小可能过冲 | 最终朝向偏差明显 |
 | `inflation_radius` | 0.30 m | 路径贴墙 | 窄通道被全部封死 |
 | `source_timeout` | 2.0 s 联调值 | Gazebo 偶发延迟导致误急停 | 真断传感器后停车太慢 |
 | AMCL `alpha1..5` | 仿真 0.05 | 过度相信里程计 | 粒子无谓扩散、对称环境易多峰 |
@@ -815,6 +956,7 @@ ROS **package（包）** 是一组相关源码、配置、启动文件和依赖�
 | 包名 | 用一句话解释 |
 |---|---|
 | `go2_navigation` | 本项目导航总装包：模式入口、Nav2 参数、地图工具、目标门禁、安全监督和 RViz 配置 |
+| `go2_navigation_bt_plugins` | 终点路径锁存 BehaviorTree 插件，防止 1 Hz 重规划重置 Rotation Shim |
 | `go2_behaviors` | 打招呼、点头、趴下等仿真行为，并负责与导航互斥 |
 | `go2_unitree_sim_bridge` | 把 Unitree Sport API 请求和状态映射到 Gazebo/CHAMP |
 | `unitree_ros2_interfaces` | Unitree 官方 `unitree_go`、`unitree_api` 消息接口快照 |

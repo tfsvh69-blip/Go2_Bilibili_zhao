@@ -51,12 +51,16 @@ setup(
     maintainer_email="hao@example.com",
     description="Go2 室内平地自主导航：同源地图包管理、NDT 定位、Nav2 规划控制与安全控制链。",
     license="BSD-3-Clause",
+    # 让 colcon 的 Python 测试步骤选择 pytest，而不是只会发现 unittest.TestCase
+    # 的回退执行器；本包测试均采用 pytest 函数形式。
+    tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "build_map_bundle = go2_navigation.build_map_bundle:main",
             "validate_map_bundle = go2_navigation.validate_map_bundle:main",
             "health_check = go2_navigation.health_check:main",
             "goal_guard = go2_navigation.goal_guard:main",
+            "rotation_diagnostics = go2_navigation.rotation_diagnostics:main",
             "safety_supervisor = go2_navigation.safety_supervisor:main",
             "simulation_odom = go2_navigation.simulation_odom:main",
         ],

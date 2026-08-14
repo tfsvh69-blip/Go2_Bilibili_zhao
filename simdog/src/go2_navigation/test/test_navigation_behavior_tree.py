@@ -50,3 +50,37 @@ def test_smooth_path_bt_plugin_is_loaded():
     libraries = document["bt_navigator"]["ros__parameters"]["plugin_lib_names"]
 
     assert "nav2_smooth_path_action_bt_node" in libraries
+
+
+def test_terminal_path_is_latched_without_disabling_one_hz_replanning():
+    root = ElementTree.parse(TREE_PATH).getroot()
+    rate_controller = root.find(".//RateController")
+    latch = root.find(".//TerminalPathLatch")
+    compute_path = root.find(".//ComputePathToPose")
+
+    assert rate_controller is not None
+    assert rate_controller.attrib["hz"] == "1.0"
+    assert compute_path is not None
+    assert compute_path.attrib["path"] == "{path}"
+    assert latch is not None
+    assert latch.attrib == {
+        "path": "{path}",
+        "goal": "{goal}",
+        "xy_tolerance": "0.30",
+        "path_goal_xy_tolerance": "0.075",
+        "path_goal_yaw_tolerance": "0.01",
+        "global_frame": "map",
+        "robot_base_frame": "base_footprint",
+        "transform_tolerance": "0.20",
+    }
+    assert len(latch) == 1
+    assert latch[0].tag == "RateController"
+    assert rate_controller in list(latch)
+
+
+def test_terminal_path_latch_bt_plugin_is_loaded():
+    config_path = TREE_PATH.parents[1] / "config" / "navigation.yaml"
+    document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    libraries = document["bt_navigator"]["ros__parameters"]["plugin_lib_names"]
+
+    assert "go2_terminal_path_latch_bt_node" in libraries

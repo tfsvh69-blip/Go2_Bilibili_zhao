@@ -67,6 +67,16 @@ class GoalGuard(Node):
                 self.get_parameter("amcl_recovery_yaw_std_rad").value),
         )
         self._rejection_publisher = self.create_publisher(String, "goal_rejected", 10)
+        accepted_goal_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self._accepted_goal_publisher = self.create_publisher(
+            PoseStamped,
+            "/navigation/accepted_goal",
+            accepted_goal_qos,
+        )
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         if self._navigation_mode == "static_map":
@@ -246,6 +256,9 @@ class GoalGuard(Node):
         if reason:
             self._publish_rejection(reason)
             return GoalResponse.REJECT
+        # 保留用户原始 RViz 目标，供只读诊断区分“原始目标”和规划器路径末端。
+        # transient-local 使诊断工具在 action 已经开始后启动仍能取得当前目标。
+        self._accepted_goal_publisher.publish(goal.pose)
         return GoalResponse.ACCEPT
 
     @staticmethod

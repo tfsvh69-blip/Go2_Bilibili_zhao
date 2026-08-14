@@ -64,6 +64,7 @@ PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions &
   // achievable by the associated executor
   input_queue_size_ = this->declare_parameter(
     "queue_size", static_cast<int>(std::thread::hardware_concurrency()));
+  always_subscribe_ = this->declare_parameter("always_subscribe", false);
   min_height_ = this->declare_parameter("min_height", std::numeric_limits<double>::min());
   max_height_ = this->declare_parameter("max_height", std::numeric_limits<double>::max());
   angle_min_ = this->declare_parameter("angle_min", -M_PI);
@@ -95,14 +96,26 @@ PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions &
     sub_.registerCallback(std::bind(&PointCloudToLaserScanNode::cloudCallback, this, _1));
   }
 
-  subscription_listener_thread_ = std::thread(
-    std::bind(&PointCloudToLaserScanNode::subscriptionListenerThreadLoop, this));
+  if (always_subscribe_) {
+    rclcpp::SensorDataQoS qos;
+    qos.keep_last(input_queue_size_);
+    sub_.subscribe(this, "cloud_in", qos.get_rmw_qos_profile());
+    RCLCPP_INFO(
+      this->get_logger(),
+      "always_subscribe=true，持续订阅点云，不随 /scan 订阅者变化启停");
+  } else {
+    subscription_listener_thread_ = std::thread(
+      std::bind(&PointCloudToLaserScanNode::subscriptionListenerThreadLoop, this));
+  }
 }
 
 PointCloudToLaserScanNode::~PointCloudToLaserScanNode()
 {
   alive_.store(false);
-  subscription_listener_thread_.join();
+  if (subscription_listener_thread_.joinable()) {
+    subscription_listener_thread_.join();
+  }
+  sub_.unsubscribe();
 }
 
 void PointCloudToLaserScanNode::subscriptionListenerThreadLoop()

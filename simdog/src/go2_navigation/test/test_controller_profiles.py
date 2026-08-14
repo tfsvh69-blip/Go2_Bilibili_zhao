@@ -22,19 +22,62 @@ def test_forward_rpp_is_fast_forward_facing_humble_profile():
     controller = _parameters(
         "controller_forward_rpp.yaml", "controller_server")["FollowPath"]
     assert controller["plugin"] == (
+        "nav2_rotation_shim_controller::RotationShimController")
+    assert controller["primary_controller"] == (
         "nav2_regulated_pure_pursuit_controller::"
         "RegulatedPurePursuitController")
+    assert controller["rotate_to_goal_heading"] is True
+    assert controller["closed_loop"] is False
+    assert controller["angular_dist_threshold"] == 1.40
+    assert controller["angular_disengage_threshold"] == 0.40
+    assert controller["forward_sampling_distance"] == 0.50
+    assert controller["simulate_ahead_time"] == 1.0
     assert controller["desired_linear_vel"] == 0.27
     assert controller["lookahead_dist"] == 0.55
     assert controller["min_lookahead_dist"] == 0.35
     assert controller["max_lookahead_dist"] == 0.80
-    assert controller["use_rotate_to_heading"] is True
-    assert controller["rotate_to_heading_min_angle"] == 0.85
-    assert controller["rotate_to_heading_angular_vel"] == 0.35
+    assert controller["use_rotate_to_heading"] is False
+    assert controller["rotate_to_heading_min_angle"] == 1.40
+    assert controller["rotate_to_heading_angular_vel"] == 0.45
     assert controller["max_angular_accel"] == 1.0
     assert controller["use_collision_detection"] is True
+    assert controller["max_allowed_time_to_collision_up_to_carrot"] == 1.0
     assert controller["use_cost_regulated_linear_velocity_scaling"] is False
     assert not any(key.startswith("vy_") for key in controller)
+    smoother = _parameters(
+        "controller_forward_rpp.yaml", "velocity_smoother")
+    assert smoother["max_velocity"] == [0.27, 0.15, 0.45]
+    assert smoother["min_velocity"] == [-0.27, -0.15, -0.45]
+
+
+def test_forward_rpp_declares_rotation_shim_runtime_dependency():
+    root = ElementTree.parse(PACKAGE_ROOT / "package.xml").getroot()
+    dependencies = {
+        element.text for element in root.findall("exec_depend")
+        if element.text
+    }
+    assert "nav2_rotation_shim_controller" in dependencies
+
+
+def test_go2_gait_does_not_press_feet_below_nominal_stance():
+    gait_path = (
+        PACKAGE_ROOT.parent
+        / "unitree-go2-ros2"
+        / "robots"
+        / "configs"
+        / "go2_config"
+        / "config"
+        / "gait"
+        / "gait.yaml"
+    )
+    gait_document = yaml.safe_load(gait_path.read_text(encoding="utf-8"))
+    gait = gait_document["/**"]["ros__parameters"]["gait"]
+
+    # 原地旋转 A/B 表明 1 cm 支撑下压会显著放大实体侧滑；CHAMP
+    # Go1 上游基线同样使用 0.0，且不改变碰撞或速度安全上限。
+    assert gait["stance_depth"] == 0.0
+    assert gait["stance_duration"] == 0.25
+    assert gait["swing_height"] == 0.04
 
 
 def test_forward_mppi_is_bounded_diff_drive_comparison_profile():
@@ -94,6 +137,9 @@ def test_all_navigation_and_mapping_entries_show_gazebo_by_default():
 
 
 def test_online_map_config_has_frequent_updates_and_single_slam_tf_owner():
+    scan = _parameters("online_mapping.yaml", "pointcloud_to_laserscan")
+    assert scan["always_subscribe"] is True
+    assert scan["target_frame"] == ""
     slam = _parameters("online_mapping.yaml", "slam_toolbox")
     assert slam["mode"] == "mapping"
     assert slam["map_update_interval"] == 1.0
@@ -105,7 +151,7 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
     params = _parameters("navigation.yaml", "controller_server")
     assert params["controller_frequency"] == 10.0
     assert params["general_goal_checker"]["xy_goal_tolerance"] == 0.30
-    assert params["general_goal_checker"]["yaw_goal_tolerance"] == 0.25
+    assert params["general_goal_checker"]["yaw_goal_tolerance"] == 0.15
     assert params["precise_goal_checker"]["xy_goal_tolerance"] == 0.10
     progress = params["progress_checker"]
     assert progress["plugin"] == "nav2_controller::PoseProgressChecker"
@@ -113,12 +159,21 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
     assert progress["required_movement_angle"] == 0.15
     document = yaml.safe_load(
         (PACKAGE_ROOT / "config" / "navigation.yaml").read_text(encoding="utf-8"))
+    planner = document["planner_server"]["ros__parameters"]["GridBased"]
+    assert planner["tolerance"] == 0.0
+    assert planner["use_final_approach_orientation"] is False
     assert document["bt_navigator"]["ros__parameters"][
         "robot_base_frame"] == "base_footprint"
     collision = document["collision_monitor"]["ros__parameters"]
     assert collision["base_frame_id"] == "base_footprint"
+    assert collision["polygons"] == ["footprint", "decel_zone", "stop_zone"]
+    assert collision["footprint"]["enabled"] is True
+    assert collision["decel_zone"]["enabled"] is True
+    assert collision["stop_zone"]["enabled"] is True
     assert collision["scan"]["topic"] == "/scan"
+    assert collision["scan"]["enabled"] is True
     assert collision["d435"]["topic"] == "/depth/color/points"
+    assert collision["d435"]["enabled"] is True
     local = document["local_costmap"]["local_costmap"]["ros__parameters"]
     assert local["robot_base_frame"] == "base_footprint"
     assert local["scan_layer"]["scan"]["data_type"] == "LaserScan"
@@ -188,3 +243,11 @@ def test_goal_guard_forwards_action_asynchronously():
     assert "raw_goal.get_result_async" in calls
     assert "time.sleep" not in calls
     assert "MultiThreadedExecutor" not in source
+
+
+def test_goal_guard_exposes_accepted_raw_goal_for_diagnostics():
+    source = (PACKAGE_ROOT / "go2_navigation" / "goal_guard.py").read_text(
+        encoding="utf-8")
+    assert '"/navigation/accepted_goal"' in source
+    assert "DurabilityPolicy.TRANSIENT_LOCAL" in source
+    assert "self._accepted_goal_publisher.publish(goal.pose)" in source

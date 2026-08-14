@@ -89,6 +89,7 @@ private:
 
   // ROS Parameters
   int input_queue_size_;
+  bool always_subscribe_;
   std::string target_frame_;
   double tolerance_;
   double min_height_, max_height_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_,
