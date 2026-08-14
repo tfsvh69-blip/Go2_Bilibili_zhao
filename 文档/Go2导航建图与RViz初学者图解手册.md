@@ -716,6 +716,86 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 这些改动只在本次进程内生效，重启就回到 YAML 基线。插件类型、
 `controller_frequency`、Collision Monitor、安全监督和锁速参数不属于日常动态调参范围。
 
+### 10.1 `nav_tuner`：先认清“旋钮能不能真的生效”
+
+参数服务返回“设置成功”，只相当于前台收到了你的申请，不等于后台算法已经换了做法。
+本项目新增的 `nav_tuner` 把旋钮分成三类：
+
+| 状态 | 初学者比喻 | 工具实际动作 | 正常可观察结果 | 异常表现 |
+|---|---|---|---|---|
+| `LIVE` | 开车时能调的空调旋钮 | 原子 set 后立即 read-back | costmap、footprint 或控制输出随之变化 | 只回读变了、可视结果不变 |
+| `LIFECYCLE RELOAD` | 必须停车再重新点火 | 锁速、重建 Nav2 插件、健康复核 | `/pause_navigation` 先 true 后 false，节点重新 active | 一直 true、节点 inactive 或速度未归零 |
+| `RESTART REQUIRED` | 要换发动机部件 | 拒绝伪热更新 | 明确提示完整重启 | 看似成功、其实旧插件仍运行 |
+
+先启动导航，再开新终端：
+
+```bash
+source scripts/setup_simdog.bash
+ros2 run go2_navigation nav_tuner
+```
+
+终端不是交互式界面时，可用：
+
+```bash
+ros2 run go2_navigation nav_tuner --snapshot --sample-seconds 10
+ros2 run go2_navigation nav_tuner --monitor-only
+```
+
+界面各栏不是新的地图，它们只是已有数据的“仪表盘”：
+
+| 栏位 | 数据来源 | 正常含义 | 异常表现 | CLI/RViz 复核 |
+|---|---|---|---|---|
+| `Sensor` | `/scan`、`/depth/color/points` | Hz 持续、age 较小；valid 是有效距离，inf 多为该方向没打到物体，nan 是无效数 | Hz 为 N/A、age 持续增加、最近距离卡在量程下限 | `ros2 topic hz /scan`；RViz `LaserScan` |
+| `Costmap` | `*/costmap_raw`、`*/published_footprint`、TF | lethal 是不可穿越格，inflated 是周边渐变代价；nearest 是机器人到最近致命格 | 障碍前仍全零、footprint 顶点不变、nearest 为 N/A | RViz `Local Costmap`/`Global Costmap`/`Robot Footprint` |
+| `Plan` | `/plan` 与 Global Costmap | length 是路径长度，age 是新鲜度，replan 是间隔，clearance 是路径中心到致命格边界的保守最小距离 | 活动目标时路径过旧、间隔远离 1 秒、clearance 过小 | RViz 绿色 `Raw Global Plan` |
+| `Control` | 四级速度话题与 RPP 参数 | 可看出 RPP 是否先调速、Collision Monitor 是否又减速 | 上游有速度、最终长期为零，或最终速度有多个发布者 | `ros2 topic info /cmd_vel -v` |
+
+常用练习先从只读开始：
+
+```text
+show local.inflation_radius
+show memory.local.scan.observation_persistence
+profile safe
+```
+
+阶段 0 中 `profile safe/balanced/aggressive` 都必须显示 `UNCALIBRATED`。这不是程序坏了，
+而是在重复碰撞验收完成前拒绝给未经验证的“安全/激进”名字填入猜测值。
+
+真正修改时一次只改一个量，并在 RViz 观察：
+
+```text
+set local.inflation_radius 0.40
+reset local.inflation_radius
+```
+
+如果命令触发 `LIFECYCLE RELOAD`，机器人会先停车，旧导航目标会取消且不会续行。若界面
+显示失败或 RViz 出现红项，先不要发送新目标：
+
+```bash
+ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
+ros2 service call /lifecycle_manager_navigation/is_active std_srvs/srv/Trigger "{}"
+ros2 lifecycle get /controller_server
+ros2 lifecycle get /planner_server
+ros2 topic echo /pause_navigation --once
+```
+
+只有 Lifecycle Manager 回答 `success=True`、两个服务器为 `active [3]`、传感器和 TF 正常
+后，才执行：
+
+```bash
+ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
+```
+
+保存前先用 `show` 复核。`save` 会在
+`simdog/src/go2_navigation/logs/backups/<timestamp>/` 备份，再只改注册表允许的 YAML
+标量；任一文件失败会整组恢复。`record run_id=... case=... result=... notes=...` 用于追加
+实验行。完整参数归属和本机实测数据见
+`simdog/src/go2_navigation/docs/nav2_runtime_parameter_matrix.md`。
+
+`rqt_reconfigure` 仍是标准参数 GUI，适合搜索参数，但它不会告诉你插件是否真的有动态
+回调，也不会安全停车、重建插件、保存 YAML 或记录实验。因此学习时可把它理解为“通用
+旋钮面板”，把 `nav_tuner` 理解为“带操作规程和仪表的实验台”。
+
 ## 11. Costmap、Footprint 和碰撞保护
 
 | 名词 | 解释 | 比喻 |

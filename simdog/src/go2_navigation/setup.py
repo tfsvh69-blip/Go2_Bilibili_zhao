@@ -6,7 +6,7 @@ package_name = "go2_navigation"
 
 
 def package_data_files():
-    """收集 config、launch、rviz、scripts 等资源文件。"""
+    """收集 config、launch、rviz、scripts、tools 和 docs 等资源文件。"""
     data_files = [
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml", "README.md"]),
@@ -37,6 +37,8 @@ def package_data_files():
     data_files += collect_under("launch")
     data_files += collect_under("rviz")
     data_files += collect_under("scripts")
+    data_files += collect_under("tools")
+    data_files += collect_under("docs")
     return data_files
 
 
@@ -63,6 +65,7 @@ setup(
             "rotation_diagnostics = go2_navigation.rotation_diagnostics:main",
             "safety_supervisor = go2_navigation.safety_supervisor:main",
             "simulation_odom = go2_navigation.simulation_odom:main",
+            "nav_tuner = go2_navigation.nav_tuner:main",
         ],
     },
 )

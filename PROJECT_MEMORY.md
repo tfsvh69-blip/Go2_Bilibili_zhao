@@ -19,6 +19,67 @@ SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对�
 高度的障碍；移动障碍 marking、1 Hz 全局重规划、RPP 碰撞约束与 clearing
 已在 Gazebo 仿真中形成闭环。
 
+`go2_navigation` 现提供 `ros2 run go2_navigation nav_tuner` 统一运行时调参和监控入口。
+72 个参数别名明确区分 `LIVE`、`LIFECYCLE RELOAD` 和 `RESTART REQUIRED`；
+`safe/balanced/aggressive` 在完整安全验收前保持 `UNCALIBRATED`。
+
+## 2026-08-14 Nav2 运行时安全调参与监控阶段 0
+
+### 发现与方案
+
+- Nav2 1.1.20 的参数服务“接受并回读”不等于插件内部已更新。InflationLayer、
+  Costmap footprint、SmacPlanner2D 与大部分 RPP 数值有动态回调；ObstacleLayer 的
+  observation source 子参数没有更新 `ObservationBuffer` 的动态回调。RPP 的
+  `use_collision_detection/use_interpolation` 同样不在动态回调中。
+- 隔离运行进一步证明：`/local_costmap/local_costmap` 和
+  `/global_costmap/global_costmap` 是 controller/planner 内嵌节点；父节点 cleanup 后，
+  child 参数服务 callback group 不应答，所以不能在 unconfigured 态可靠 set。
+  工具改为健康时先锁速、active 态原子暂存 source 参数（旧 buffer 不会伪生效），再由
+  Lifecycle Manager `RESET/STARTUP` 重建插件，最后等待安全监督图审计并恢复。
+- BT 的重规划 `1 Hz` 来自 XML `<RateController>`，插件列表、插件类型和 observation
+  source 结构也不是安全热更新项，统一归为 `RESTART REQUIRED` 并拒绝 `set`。
+
+### 实际实现与可观察性
+
+- 新增无 ROS 核心模块 `nav_tuning.py`：72 项注册表、类型/范围/安全开关校验、周期分位数、
+  scan 计数、路径长度、半格加密保守 clearance，以及保留注释/顺序/层级的 YAML 标量
+  定点修改。双文件保存会先备份到 `logs/backups/<timestamp>/`，临时文件语义复核后
+  `os.replace`；任一替换失败恢复全部文件并输出 unified diff。
+- 新增 `nav_tuner` curses/文本入口和源码兼容 wrapper，支持 `show/set/reset/reset-group/
+  profile/save/record/help/quit`、`--snapshot` 和 `--monitor-only`。监控整合 `/scan`、D435、
+  两张 raw costmap、发布 footprint、`/plan`、TF 与四级速度链；不增加自定义消息或服务。
+- `navigation.yaml` 只把现有 ObstacleLayer 默认值显式化，以便以后白名单持久化；
+  `marking`、`clearing`、`footprint_clearing_enabled` 和 RPP collision detection 均由注册表
+  拒绝设为 false。现有 `rqt_reconfigure` 保留为辅助 GUI。
+- 参数矩阵、包 README 与初学者图解手册已同步。Navigation2 上游为 Apache-2.0；本阶段
+  只调用标准参数/Lifecycle 接口并依据 1.1.20 源码分类，没有复制上游实现。
+
+### 已实测与阶段门禁
+
+- 独立 Domain 220 在线 SLAM 无 GUI 的 10 秒 snapshot：`/scan=2.717 Hz`，周期
+  p50/p95/p99 为 `0.277/0.714/0.790 s`，`range_min=0.900 m`；Local Costmap 为
+  `117 lethal/1555 inflated`，Global Costmap 为 `460 lethal/3613 inflated`，
+  `/pause_navigation=false`。
+- LIVE：local inflation `0.30→0.40 m` 后代表性 inflated 格 `1623→2129`；padding
+  `0.01→0.03 m` 后发布足迹外框约 `0.72×0.50→0.76×0.54 m`；RPP 速度
+  `0.27→0.26 m/s` 原子 set/read-back 成功，随后全部恢复 YAML 基线。
+- LIFECYCLE RELOAD：local scan persistence `0.0→0.2→0.0 s` 两次完整重载成功；期间
+  `/pause_navigation=true`，最后 8 个 Nav2 节点 active、参数回读正确、
+  `/pause_navigation=false`，旧目标不续行。Domain 223 进一步从已确认的最终
+  `/cmd_vel.linear.x=0.1` 开始执行 reload，工具在零速度落地后才拆除插件，重载和恢复
+  YAML 基线均成功。高负载下曾发现 3 秒状态查询会误判迟到响应，现改用单节点 5 秒、
+  整体 60 秒健康窗口。重规划结构项热改被明确拒绝。
+- `/cmd_vel` 只有 Collision Monitor 一个 publisher。阶段 0 不包含导航目标或碰撞场景，
+  不宣称障碍安全参数已标定。
+- `go2_navigation` 包级 pytest/colcon 测试为 76 项全部通过；当前工作区累计结果为
+  `210 tests, 0 errors, 0 failures, 6 skipped`。6 个 skipped 均是
+  `pointcloud_to_laserscan` 上游因 cppcheck 2.7 性能问题主动跳过的既有静态检查，
+  不是本阶段功能失败。
+- 同一 10 秒窗口没有 D435 点云；另一次隔离样本约 `0.30 Hz`。这和
+  `/scan.range_min=0.9 m` 都只列为后续调查线索，不把“已配置”描述为冗余已验证。
+- 阶段 0 门禁为 PASS；下一停点是阶段 1 的可重复 Gazebo 障碍探针与近距盲区量化，
+  尚未开始。
+
 ## 2026-08-14 动态障碍代价图链路修复
 
 ### 现象、数据链与根因

@@ -77,6 +77,54 @@ ros2 lifecycle get /map_server                 # 期望 active [3]
 在线模式传 `map_session:=new` 会创建空白 pose graph，不会读取任何旧会话；传入具体
 会话目录才表示续建。
 
+## 运行时安全调参与监控
+
+导航启动并健康后，在另一个已加载 `simdog` 的终端运行：
+
+```bash
+# curses 综合界面；非交互终端自动使用文本命令行
+ros2 run go2_navigation nav_tuner
+
+# 只监控，或者采样 10 秒后输出一次 JSON
+ros2 run go2_navigation nav_tuner --monitor-only
+ros2 run go2_navigation nav_tuner --snapshot --sample-seconds 10
+
+# 不依赖 console entry point 的源码兼容入口
+python3 simdog/src/go2_navigation/tools/nav_tuner.py
+```
+
+界面同时显示 `/scan` 与 D435 频率/年龄、scan 有效/inf/nan 数与最近距离、全局/局部
+costmap 的 lethal/inflated 格、机器人到最近 lethal 格距离、实际发布 footprint、路径长度、
+1 Hz 重规划间隔、按半格加密后的保守 clearance，以及
+`/cmd_vel_nav → /cmd_vel_switched → /cmd_vel_smoothed → /cmd_vel` 四级速度。
+
+可用命令：
+
+```text
+show [alias]
+set <alias> <value>
+reset <alias>
+reset-group <group>
+profile safe|balanced|aggressive
+save
+record [key=value ...]
+help
+quit
+```
+
+工具把参数分成 `LIVE`、`LIFECYCLE RELOAD`、`RESTART REQUIRED`。ObstacleLayer 的
+source 子参数虽然可被参数服务接受，但 active 插件不会刷新 observation buffer；工具会
+先停车，再通过 Lifecycle RESET/STARTUP 重建插件，确认全部 active 后才恢复输入，旧目标
+不会续行。插件列表、插件类型、observation source 结构和 BT 的 1 Hz 频率会被明确拒绝，
+不会伪装成热更新。`safe/balanced/aggressive` 在完整障碍安全验收前均显示
+`UNCALIBRATED`，不得使用。
+
+`save` 只定点替换注册表管理的 YAML 标量。写入前备份到
+`logs/backups/<timestamp>/`；任一文件失败会回滚全部文件并输出 unified diff。完整别名、
+类型、单位、YAML 归属、能力分类、实测证据和故障分支见
+[运行时参数能力矩阵](docs/nav2_runtime_parameter_matrix.md)。标准 `rqt_reconfigure` 仍保留为
+辅助 GUI，但不负责能力判断、reload、效果验证、实验记录或安全保存。
+
 ## RViz 操作
 
 遇到机器人抖动、RViz 红项或目标不取消时，先点击 `Navigation 2 -> Cancel`。仍未停止则：
