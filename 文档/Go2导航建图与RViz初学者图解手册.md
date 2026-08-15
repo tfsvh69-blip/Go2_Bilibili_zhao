@@ -1,6 +1,6 @@
 # Go2 导航、建图与 RViz 初学者图解手册
 
-> 最后更新：2026-08-13
+> 最后更新：2026-08-15
 > 适用环境：Ubuntu 22.04、ROS 2 Humble、Gazebo Classic 11、Nav2、CHAMP 以及本仓库 `simdog/` 工作空间。
 > 文档目标：看到一个名词、颜色、箭头或状态时，能够回答“它是什么、来自哪里、正常应怎样、异常该查什么”。
 
@@ -716,7 +716,99 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 这些改动只在本次进程内生效，重启就回到 YAML 基线。插件类型、
 `controller_frequency`、Collision Monitor、安全监督和锁速参数不属于日常动态调参范围。
 
-### 10.1 `nav_tuner`：先认清“旋钮能不能真的生效”
+### 10.3 静态地图 AMCL 与常用运行时调参速查
+
+如果学习目标是“先在已有地图中告诉狗它在哪里，再给一个目标让它走”，使用固定二维地图
+与 AMCL，而不是在线 SLAM。下面的统一入口会同时启动 Gazebo、`map_server`、AMCL、Nav2、
+RViz 和可选的 `rqt_reconfigure`：
+
+```bash
+source scripts/setup_simdog.bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+  navigation_mode:=static_map localization:=amcl \
+  map_dir:=$HOME/go2_maps/online/latest \
+  gui:=true rviz:=true tuning_gui:=true
+```
+
+`map_dir` 必须是包含 `map.yaml` 和配套 PGM 图片的目录；若保存地图时使用了别的目录，要将
+它替换为实际目录。RViz 顶部先选 `2D Pose Estimate`，在地图中机器人真实位置按下鼠标并
+拖出与狗头一致的箭头。这个操作会发布 `/initialpose`：按下点是“大概在哪里”，箭头是“朝
+哪边”。AMCL 再用 `/scan` 与静态 `/map` 的墙体、障碍边界比对来收敛位置。确认 `Navigation 2`
+面板的 `Localization: active` 和 `Navigation: active` 后，才选 `Nav2 Goal`，在白色自由区
+拖出目标位置和到达朝向。
+
+固定地图不会随机器人移动扩大；地图外、黑色占用格或未知区的目标会被拒绝。初始位姿后
+机器人模型仍不出现或 `Localization: active` 不出现时，先重新在白色自由区给更接近真实的
+位置和朝向，再检查：
+
+```bash
+ros2 topic hz /scan
+ros2 topic echo --once /amcl_pose
+ros2 lifecycle get /planner_server
+ros2 lifecycle get /controller_server
+```
+
+#### rqt 中的位置、物理含义与观察方法
+
+`rqt_reconfigure` 是本次进程的“临时旋钮面板”：参数会立即写到正在运行的节点，但**不会**
+写回 YAML；关闭或重启导航便恢复基线。左侧选择下表的节点，右侧输入完整参数尾部或关键字
+搜索即可。不要在狗正朝向人、墙或真实障碍物移动时调快速度；先在 Gazebo 中空旷区域测试，
+一次只修改一项。
+
+| 想调什么 | rqt 左侧节点与右侧参数 | 当前基线 | 调大后的肉眼现象 | 调小后的肉眼现象 |
+|---|---|---:|---|---|
+| 局部膨胀半径 | `/local_costmap/local_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | 狗周边的局部障碍警戒带更宽，近场更早绕开 | 更易贴近障碍，安全余量变小 |
+| 局部代价衰减 | `/local_costmap/local_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 离开障碍后代价下降更快，路径更可能靠近膨胀圈边缘 | 代价向外延续更远，局部避障更早让开 |
+| 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
+| 全局代价衰减 | `/global_costmap/global_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 同上，影响规划器绕障的代价梯度 | 同上，障碍影响更向外延续 |
+| 正常前进目标速度 | `/controller_server` → `FollowPath.desired_linear_vel` | `0.27 m/s` | 前进更快，转弯过冲和接触模型误差风险上升 | 更稳但完成导航更慢 |
+| 原地转向速度 | `/controller_server` → `FollowPath.rotate_to_heading_angular_vel` | `0.45 rad/s` | 对齐更快，可能超过目标朝向 | 对齐更平缓，过小可能难以克服四足接触阻力 |
+| 转向加速度 | `/controller_server` → `FollowPath.max_angular_accel` | `1.0 rad/s²` | 转向启停更急 | 转向更圆滑但响应更慢 |
+| 速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.27, 0.15, 0.45]` | 放宽对应轴的最高速度限制 | 限制对应轴的最高速度 |
+
+`max_velocity` 的三个数依次是 `[x 前进 m/s, y 横移 m/s, z 角速度 rad/s]`。当前
+`forward_rpp` 是前向控制档，正常只调整 `x` 和 `z`，不要把 `y` 当作四足机器人可以横走的
+速度。`desired_linear_vel` 只是控制器希望达到的前进速度，实际速度还会被
+`velocity_smoother.max_velocity[0]` 限制：若把前者调为 `0.35 m/s` 而上限仍是 `0.27 m/s`，
+狗仍不会超过 `0.27 m/s`。例如想把前进速度降为 `0.20 m/s`，应同时设置：
+
+```text
+FollowPath.desired_linear_vel = 0.20
+max_velocity = [0.20, 0.15, 0.45]
+```
+
+膨胀调参先保持控制器、传感器缓存和速度不变；先将 local/global 的
+`inflation_radius` 设为已经标定的 Footprint 外接半径约 `0.474 m`，之后每次只加 `0.10 m`，再单独试
+`cost_scaling_factor`。RViz 左侧 `Displays` 中一次只打开 `Global Costmap` 或
+`Local Costmap`，观察障碍周边膨胀圈；同时观察绿色 `Raw Global Plan=/plan` 是否离障碍更远。
+不要只凭颜色判定图层，因为透明度和多个 Display 叠加会改变颜色。
+
+最终的命令仍会经过：
+
+```text
+Nav2 → twist_mux → velocity_smoother → collision_monitor → /cmd_vel → CHAMP
+```
+
+因此提高控制器速度不等于最终出口一定更快：Collision Monitor、定位失效和安全监督可以继续
+减速或输出零速度。不得为了“跑得更快”关闭 Collision Monitor、安全监督或锁速参数。
+
+#### 怎样保存确认过的值
+
+确认某个临时值通过观察和重复试验后，永久修改 `forward_rpp` 档应写入：
+
+| 参数 | YAML 文件与路径 |
+|---|---|
+| 两张 costmap 的 `inflation_radius`、`cost_scaling_factor` | `simdog/src/go2_navigation/config/navigation.yaml` 中相应 local/global `inflation_layer` |
+| `desired_linear_vel`、`rotate_to_heading_angular_vel`、`max_angular_accel`、`max_velocity` | `simdog/src/go2_navigation/config/controller_forward_rpp.yaml` |
+| `max_accel`、`max_decel` 等速度平滑斜率 | `simdog/src/go2_navigation/config/navigation.yaml` 的 `velocity_smoother` |
+
+修改 YAML 后重启这套导航入口才会完整应用。已纳入安全调参注册表的
+`local/global.inflation_*`、`rpp.desired_linear_vel` 和 `velocity.max_velocity`，也可通过
+`nav_tuner` 逐项设置、回读后输入 `save` 保存；`save` 会先在
+`simdog/src/go2_navigation/logs/backups/<timestamp>/` 创建备份。`rqt_reconfigure` 本身没有
+这个保存、备份和实验记录能力。
+
+### 10.4 `nav_tuner`：先认清“旋钮能不能真的生效”
 
 参数服务返回“设置成功”，只相当于前台收到了你的申请，不等于后台算法已经换了做法。
 本项目新增的 `nav_tuner` 把旋钮分成三类：
@@ -818,7 +910,7 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
   `rcl_shutdown already called`：这是旧版 `nav_tuner` 的足迹订阅/重复退出问题；当前版已
   分别改用 volatile QoS 和 `try_shutdown()`。若还出现，重新构建包并重新加载环境。
 
-### 10.2 障碍探针：“话题在发”不等于“近处看得见”
+### 10.5 障碍探针：“话题在发”不等于“近处看得见”
 
 `obstacle_probe` 像一把能自动移动、并自带“碰到了”开关的标尺。它通过 Gazebo
 标准服务把红色方块放到指定距离，同时记录 `/velodyne_points`、`/scan`、
@@ -852,7 +944,7 @@ world 没有 `gazebo_ros_state` 插件，或尚未重启 Gazebo；不要跳过�
 “近距已覆盖”。详细 CSV、方向与障碍厚度对照见
 `simdog/src/go2_navigation/docs/lidar_blind_zone_validation.md`。
 
-### 10.3 Footprint 校准：画的是整只机器狗的动态影子
+### 10.6 Footprint 校准：画的是整只机器狗的动态影子
 
 只量 trunk 长宽不够。四足机器人前进或横移时，足端和腿会伸出机身；前置 D435 也会
 突出。如果 Footprint 只包住躯干，RViz 看起来还能规划，真实腿却可能先碰墙。反过来，
