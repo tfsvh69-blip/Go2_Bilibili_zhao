@@ -14,7 +14,7 @@
 
 用法：
     ros2 launch go2_navigation navigation.launch.py \
-        navigation_mode:=static_map map_dir:=$HOME/go2_maps/latest
+        navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/latest
 """
 
 import os
@@ -289,7 +289,9 @@ def generate_launch_description():
         LogInfo(msg="Go2 导航启动：ROS_DOMAIN_ID=%s（普通仿真期望 0）" % current_domain),
         DeclareLaunchArgument(
             "map_dir",
-            default_value=os.path.expanduser("~/go2_maps/latest"),
+            default_value=os.path.join(
+                os.environ.get("GO2_PROJECT_ROOT", os.path.expanduser("~")),
+                "go2_maps/latest"),
             description=("固定地图目录：AMCL 需 map.yaml/pgm；NDT 需额外包含 "
                          "GlobalMap.pcd 与 map_bundle.yaml")),
         DeclareLaunchArgument(

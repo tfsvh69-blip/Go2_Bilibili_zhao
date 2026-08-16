@@ -9,7 +9,7 @@
   供 validate_map_bundle 在启动前校验。
 
 用法：
-    ros2 run go2_navigation build_map_bundle --map-dir ~/go2_maps/latest
+    ros2 run go2_navigation build_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest
 """
 
 import argparse
@@ -24,7 +24,7 @@ import yaml
 
 from ament_index_python.packages import get_package_prefix
 
-from go2_navigation.map_utils import MAP_BUNDLE_SCHEMA_VERSION, MAP_FILES
+from go2_navigation.map_utils import MAP_BUNDLE_SCHEMA_VERSION, MAP_FILES, default_map_dir
 
 
 def sha256(path: str) -> str:
@@ -157,7 +157,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--map-dir",
-        default=os.path.expanduser("~/go2_maps/latest"),
+        default=default_map_dir(),
         help="存放 GlobalMap.pcd 并输出地图包的目录",
     )
     parser.add_argument(

@@ -72,6 +72,32 @@ costmap 的实际发布轮廓。
 - 下一步：恢复/重查 `use_inf` 与 `obstacle_max_range` 组合，或在现象发生时现场
   抓 costmap raw 与 TF 对比。
 
+## 2026-08-16 go2_maps / go2_bags 迁入项目根
+
+### 实际操作
+
+- `~/go2_maps`、`~/go2_bags` 物理移动到项目根 `go2_maps/`、`go2_bags/`，
+  保证项目独立，不再读写 `$HOME` 下的数据目录。
+- `go2_maps/online/latest` 软链重建为相对路径 `remap_20260816`（指向项目内）。
+- 可执行代码统一改为读取 `GO2_PROJECT_ROOT`（`setup_simdog.bash` 导出）：
+  `start.sh`、`save_Map.sh`、`save_map.sh`、`save_online_map.sh` 用
+  `script_dir` 推导项目根（回退 `$HOME`）；`localization.launch.py`、
+  `navigation.launch.py`、`simulation_navigation.launch.xml` 的 `map_dir`
+  默认值用 `GO2_PROJECT_ROOT`；`map_utils.py` 新增 `default_map_dir()`，
+  `health_check/goal_guard/build_map_bundle/validate_map_bundle` 4 个工具改用之；
+  LIO-SAM `params.yaml` 的 `savePCDDirectory` 兜底改为项目内绝对路径
+  （`save_Map.sh` 仍传绝对路径覆盖）。
+- README、CLAUDE/AGENTS 镜像、GPU_TESTING、simdog/README、go2_navigation README、
+  初学者手册、测试指南中的命令示例路径同步为 `$GO2_PROJECT_ROOT/go2_maps`。
+- `PROJECT_MEMORY.md` 保留历史记录原样（当时路径即当时事实）。
+
+### 验证
+
+- `go2_navigation` 重建通过；包级 pytest 18 项路径相关测试通过（既有 3 项
+  Frame Rate/controller profile 失败在迁移前已存在，与本次无关）。
+- `default_map_dir()` 实测：带 `GO2_PROJECT_ROOT` 返回项目内路径，未加载时
+  回退 `$HOME`。脚本语法 `bash -n` 与路径推导上溯层级已核对。
+
 ## 2026-08-15 默认控制档切换为前向 MPPI
 
 ### 阶段目标

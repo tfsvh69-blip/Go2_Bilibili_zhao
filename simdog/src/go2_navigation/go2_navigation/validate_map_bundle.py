@@ -12,6 +12,7 @@ from go2_navigation.map_utils import (
     MAP_BUNDLE_SCHEMA_VERSION,
     MAP_FILES,
     MapValidationError,
+    default_map_dir,
     load_bundle_metadata,
     load_static_map,
     safe_child_path,
@@ -96,7 +97,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--map-dir",
-        default="~/go2_maps/latest",
+        default=default_map_dir(),
         help="地图包目录",
     )
     args = parser.parse_args()

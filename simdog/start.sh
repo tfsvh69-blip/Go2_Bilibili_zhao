@@ -3,10 +3,13 @@
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(cd -- "${script_dir}/.." && pwd)"
 workspace_setup="${script_dir}/install/setup.bash"
 unitree_setup="${script_dir}/../scripts/setup_unitree_sim.bash"
 wait_time="${WAIT_TIME:-8}"
-map_path="${1:-${HOME}/go2_maps/latest/GlobalMap.pcd}"
+# 地图数据目录位于项目根内，保持项目独立；支持 GO2_MAPS_ROOT 覆盖。
+go2_maps_root="${GO2_MAPS_ROOT:-${project_root}/go2_maps}"
+map_path="${1:-${go2_maps_root}/latest/GlobalMap.pcd}"
 gpu_device="${GO2_GPU_DEVICE:-0}"
 force_nvidia_rendering="${GO2_FORCE_NVIDIA_RENDERING:-1}"
 

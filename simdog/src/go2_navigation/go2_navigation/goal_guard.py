@@ -22,6 +22,7 @@ from go2_navigation.map_utils import (
     COMMISSIONING_CLEARANCE_M,
     MapValidationError,
     StaticMap,
+    default_map_dir,
     load_static_map,
     occupancy_grid_to_static_map,
 )
@@ -33,7 +34,7 @@ class GoalGuard(Node):
 
     def __init__(self) -> None:
         super().__init__("go2_goal_guard")
-        self.declare_parameter("map_dir", "~/go2_maps/latest")
+        self.declare_parameter("map_dir", default_map_dir())
         self.declare_parameter("navigation_mode", "online_slam")
         self.declare_parameter("localization", "amcl")
         self.declare_parameter(

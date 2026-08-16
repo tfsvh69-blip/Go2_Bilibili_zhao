@@ -120,16 +120,18 @@ ros2 launch go2_navigation simulation_navigation.launch.xml
 bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
 # 固定二维地图：AMCL 定位，静态地图不会自行扩展
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    navigation_mode:=static_map map_dir:=$HOME/go2_maps/online/latest \
+    navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
     localization:=amcl
 # 核实 map_server 实际加载来源；固定模式不会自动挑选地图质量
 ros2 param get /map_server yaml_filename
 ros2 run go2_navigation health_check --mode online_slam --localization amcl
 ```
 
-`~/go2_maps/online/latest` 由 `save_online_map.sh` 指向最近保存的 Slam Toolbox
-会话；不要与 LIO-SAM/NDT 使用的 `~/go2_maps/latest` 混淆。在线启动传
-`map_session:=new` 必须从空白 pose graph 开始，不得隐式读取旧会话。
+`go2_maps/` 地图目录位于项目根（`setup_simdog.bash` 导出的 `GO2_PROJECT_ROOT`
+之下），不再依赖 `$HOME`；旧 `~/go2_maps` 已整体迁入项目根以保持项目独立。
+`$GO2_PROJECT_ROOT/go2_maps/online/latest` 由 `save_online_map.sh` 指向最近保存
+的 Slam Toolbox 会话；不要与 LIO-SAM/NDT 使用的 `$GO2_PROJECT_ROOT/go2_maps/latest`
+混淆。在线启动传 `map_session:=new` 必须从空白 pose graph 开始，不得隐式读取旧会话。
 
 两种模式都由统一入口将 Unitree bridge 固定接入 `/cmd_vel_unitree`。旧的
 `simulation_online_mapping_navigation.launch.xml` 仅保留为兼容 wrapper。默认控制档为
@@ -152,13 +154,13 @@ Rotation Shim + RPP 对照档，`omni_mppi` 是全向对照。默认路径链为
 
 主 Gazebo 启动文件默认 `unitree_bridge:=true`，同时启动行为服务端和 Unitree 兼容桥；不需要兼容层时显式传入 `unitree_bridge:=false`。Unitree `Move` 活动期间不得并行运行键盘遥控。
 
-桌面环境可执行 `bash simdog/start.sh`，依次启动带 GUI 的 Gazebo、LIO-SAM、键盘遥控，并在找到 PCD 地图时启动 NDT。默认地图为 `~/go2_maps/latest/GlobalMap.pcd`；没有地图时必须跳过 NDT。建图完成后使用 `bash simdog/save_Map.sh` 保存地图。
+桌面环境可执行 `bash simdog/start.sh`，依次启动带 GUI 的 Gazebo、LIO-SAM、键盘遥控，并在找到 PCD 地图时启动 NDT。默认地图为项目根 `go2_maps/latest/GlobalMap.pcd`；没有地图时必须跳过 NDT。建图完成后使用 `bash simdog/save_Map.sh` 保存地图。
 
 NDT 单独启动示例：
 
 ```bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ```
 

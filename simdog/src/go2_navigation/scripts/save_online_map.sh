@@ -8,7 +8,10 @@ if [[ ! ${map_name} =~ ^[A-Za-z0-9._-]+$ ]]; then
     exit 2
 fi
 
-map_root="${GO2_ONLINE_MAP_ROOT:-${HOME}/go2_maps/online}"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+project_root="$(cd -- "${script_dir}/../../../.." && pwd)"
+# 在线地图根目录位于项目根内，保持项目独立；支持 GO2_ONLINE_MAP_ROOT 覆盖。
+map_root="${GO2_ONLINE_MAP_ROOT:-${project_root}/go2_maps/online}"
 mkdir -p "${map_root}"
 map_root="$(realpath "${map_root}")"
 final_dir="${map_root}/${map_name}"

@@ -26,6 +26,16 @@ MAP_FILES = {
 }
 
 
+def default_map_dir() -> str:
+    """返回项目内地图目录默认值，保持项目独立。
+
+    优先使用 setup_simdog.bash 导出的 GO2_PROJECT_ROOT；未加载时回退到 $HOME，
+    以便未 source 环境也能解析，但与仓库内的 go2_maps 目录约定一致。
+    """
+    root = os.environ.get("GO2_PROJECT_ROOT") or os.path.expanduser("~")
+    return os.path.join(root, "go2_maps/latest")
+
+
 class MapValidationError(ValueError):
     """地图包或栅格语义不满足导航要求。"""
 

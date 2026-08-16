@@ -10,7 +10,9 @@
 set -eo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-destination="${1:-${HOME}/go2_maps/latest}"
+project_root="$(cd -- "${script_dir}/../../../.." && pwd)"
+go2_maps_root="${GO2_MAPS_ROOT:-${project_root}/go2_maps}"
+destination="${1:-${go2_maps_root}/latest}"
 resolution="${2:-0.2}"
 
 source /opt/ros/humble/setup.bash

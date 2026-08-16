@@ -11,7 +11,7 @@
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/latest \
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
     controller_profile:=forward_rpp tuning_gui:=true
 ```
 
@@ -24,15 +24,15 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 `min_approach_linear_velocity` 和 goal tolerance，一次一项。不得关闭碰撞与锁速保护。
 参数修改只对当前进程生效，重启恢复 YAML 基线。
 
-`~/go2_maps/online/latest` 由 `save_online_map.sh` 指向最近一次 Slam Toolbox
+`$GO2_PROJECT_ROOT/go2_maps/online/latest` 由 `save_online_map.sh` 指向最近一次 Slam Toolbox
 会话；当前机器上它指向 `home_02`。不要将它与 LIO-SAM/NDT 使用的
-`~/go2_maps/latest` 混淆。启动后必须确认实际文件：
+`$GO2_PROJECT_ROOT/go2_maps/latest` 混淆。启动后必须确认实际文件：
 
 ```bash
 ros2 param get /map_server yaml_filename
 ```
 
-预期为 `/home/hao/go2_maps/online/home_02/map.yaml`（以后重新保存地图时会变为新会话）。
+预期为 `$GO2_PROJECT_ROOT/go2_maps/online/home_02/map.yaml`（以后重新保存地图时会变为新会话）。
 若 RViz 仍显示旧图，关闭全部旧导航/RViz 进程后只重启这一套入口，并确认
 `ros2 lifecycle get /map_server` 返回 `active [3]`。
 
@@ -88,20 +88,20 @@ export GAZEBO_MASTER_URI=http://127.0.0.1:11441   # 仅启动 Gazebo 的终端�
 ### 校验现有地图包
 
 ```bash
-ros2 run go2_navigation validate_map_bundle --map-dir ~/go2_maps/latest
+ros2 run go2_navigation validate_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest
 echo $?   # 期望 0
 ```
 
-**预期输出**：`地图包校验通过：/home/hao/go2_maps/latest`。
+**预期输出**：`地图包校验通过：$GO2_PROJECT_ROOT/go2_maps/latest`。
 
 ### 篡改检测（模拟文件被改坏）
 
 ```bash
-cp ~/go2_maps/latest/map.pgm /tmp/map.pgm.bak
-printf '\x00' | dd of=~/go2_maps/latest/map.pgm bs=1 seek=10 conv=notrunc
-ros2 run go2_navigation validate_map_bundle --map-dir ~/go2_maps/latest
+cp $GO2_PROJECT_ROOT/go2_maps/latest/map.pgm /tmp/map.pgm.bak
+printf '\x00' | dd of=$GO2_PROJECT_ROOT/go2_maps/latest/map.pgm bs=1 seek=10 conv=notrunc
+ros2 run go2_navigation validate_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest
 echo $?   # 期望 1
-cp /tmp/map.pgm.bak ~/go2_maps/latest/map.pgm     # 恢复
+cp /tmp/map.pgm.bak $GO2_PROJECT_ROOT/go2_maps/latest/map.pgm     # 恢复
 ```
 
 **预期输出**：`校验失败：SHA-256 不匹配：…/map.pgm（地图可能已改动…）`。
@@ -109,7 +109,7 @@ cp /tmp/map.pgm.bak ~/go2_maps/latest/map.pgm     # 恢复
 ### 从 PCD 重建地图包（可选，用最新建图结果）
 
 ```bash
-ros2 run go2_navigation build_map_bundle --map-dir ~/go2_maps/latest \
+ros2 run go2_navigation build_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest \
     --x-min -2 --x-max 8 --y-min -4 --y-max 4 --resolution 0.1
 # 参数说明：
 #   --x-min/--x-max/--y-min/--y-max  裁剪到导航区域（提高点密度）
@@ -171,7 +171,7 @@ ros2 topic echo --once /odom/ground_truth --field pose.pose.position
 ```bash
 # 终端 2 —— 定位器（Gazebo 保持运行）
 ros2 launch go2_navigation localization.launch.py \
-    map_dir:=$HOME/go2_maps/latest localization:=lidar_ndt rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/latest localization:=lidar_ndt rviz:=true
 ```
 
 ### 检查节点激活与地图加载
@@ -207,12 +207,12 @@ ros2 topic echo --once /alignment_status               # fitness_score < 6.0 表
 # 推荐：停止本手册前面分开启动的 Gazebo/定位器后，一次启动完整闭环
 # （本节观察 RPP 对照档行为，故显式传 forward_rpp；默认档已是 forward_mppi）：
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    map_dir:=$HOME/go2_maps/latest localization:=lidar_ndt \
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/latest localization:=lidar_ndt \
     controller_profile:=forward_rpp gui:=false rviz:=true
 
 # 已自行启动 Gazebo 时，才使用下列分组件入口：
 # ros2 launch go2_navigation navigation.launch.py \
-#     map_dir:=$HOME/go2_maps/latest localization:=lidar_ndt rviz:=true
+#     map_dir:=$GO2_PROJECT_ROOT/go2_maps/latest localization:=lidar_ndt rviz:=true
 ```
 
 > ⚠️ 同一时间只能有一套统一导航入口。若先前已经运行过，请在启动前确认没有遗留
@@ -228,7 +228,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
    unknown。`Localization Map` 应是浅蓝色 `/global_map` 点云。
 3. `Local Costmap` 和 `Global Costmap` 默认不勾选。排查时单独勾选其中一个；机器人
    周围随雷达变化的黑色环带属于局部代价图，不表示现有 PCD 或静态地图必然错误。
-4. 不需要先遥控 Go2 重新扫描。当前入口会加载 `~/go2_maps/latest/GlobalMap.pcd`
+4. 不需要先遥控 Go2 重新扫描。当前入口会加载 `$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd`
    与 `map.yaml/pgm`；本轮只需用当前雷达点云向已有 PCD 做 NDT 配准。
 5. 点击顶部 `2D Pose Estimate`，在约 `(0, 0.8)` 的白色自由区按住左键向机器人朝向
    拖出箭头。终端应显示接受 `frame_id=map`，而不是 `odom`。等待
@@ -386,8 +386,8 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 
 ## 7 · 在线建图 + 手动目标导航
 
-这一节使用 `map_session:=new`，不加载 `~/go2_maps/latest`、
-`~/go2_maps/online/latest` 或任何其他旧会话，也不需要 `2D Pose Estimate`。在启动前停掉
+这一节使用 `map_session:=new`，不加载 `$GO2_PROJECT_ROOT/go2_maps/latest`、
+`$GO2_PROJECT_ROOT/go2_maps/online/latest` 或任何其他旧会话，也不需要 `2D Pose Estimate`。在启动前停掉
 固定地图导航，确保没有 NDT、`map_server` 或另一个 `map -> odom` 发布者。
 
 ```bash
@@ -423,7 +423,7 @@ bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
 
 ```bash
 ros2 launch go2_navigation simulation_online_mapping_navigation.launch.xml \
-    map_session:=$HOME/go2_maps/online/learning_room gui:=true rviz:=true
+    map_session:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room gui:=true rviz:=true
 ```
 
 ✅ **通过标准**：机器人移到观测边缘后已知栅格数或地图边界增加；保存目录同时

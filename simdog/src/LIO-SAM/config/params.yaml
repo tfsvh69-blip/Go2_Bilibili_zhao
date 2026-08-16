@@ -22,7 +22,8 @@
 
     # Export settings
     savePCD: false                              # 仅通过save_Map.sh显式保存，避免节点退出时覆盖地图
-    savePCDDirectory: "go2_maps/latest"
+    # 项目内地图目录；save_Map.sh 会传入绝对路径覆盖此兜底值。
+    savePCDDirectory: "/home/hao/ROS/Go2_Bilibili_zhao-main/go2_maps/latest"
 
     # Sensor Settings - 匹配仿真环境
     sensor: velodyne                              

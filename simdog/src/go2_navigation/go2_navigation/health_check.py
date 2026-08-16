@@ -26,6 +26,7 @@ from go2_navigation.map_utils import (
     COMMISSIONING_CLEARANCE_M,
     MapValidationError,
     StaticMap,
+    default_map_dir,
     load_static_map,
 )
 from go2_navigation.localization_health import amcl_covariance_problem
@@ -380,7 +381,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duration", type=float, default=5.0, help="墙钟采样时长（秒）")
     parser.add_argument("--timeout", type=float, default=1.5, help="话题过期阈值（秒）")
-    parser.add_argument("--map-dir", default="~/go2_maps/latest", help="地图包目录")
+    parser.add_argument("--map-dir", default=default_map_dir(), help="地图包目录")
     parser.add_argument(
         "--mode", choices=("static_bundle", "static_map", "online_slam"),
         default="online_slam", help="健康检查拓扑模式")

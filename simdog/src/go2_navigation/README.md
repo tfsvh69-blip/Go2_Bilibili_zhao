@@ -31,17 +31,17 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 
 # 载入已有 pose graph 续建；参数是包含 slam.posegraph/slam.data 的会话目录
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    navigation_mode:=online_slam map_session:=$HOME/go2_maps/online/latest \
+    navigation_mode:=online_slam map_session:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
     rviz:=true
 
 # 固定二维图 + AMCL
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    navigation_mode:=static_map map_dir:=$HOME/go2_maps/online/latest \
+    navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
     localization:=amcl rviz:=true
 
 # 固定图 + NDT/二维 EKF 实验档
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    navigation_mode:=static_map map_dir:=$HOME/go2_maps/latest \
+    navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/latest \
     localization:=lidar_ndt rviz:=true
 ```
 
@@ -60,12 +60,12 @@ bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/learning_room rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room rviz:=true
 ```
 
-`save_online_map.sh` 还会原子更新 `~/go2_maps/online/latest` 软链接，因此日常固定
+`save_online_map.sh` 还会原子更新 `$GO2_PROJECT_ROOT/go2_maps/online/latest` 软链接，因此日常固定
 AMCL 可以使用该路径；需要复现实验时应写明确的会话目录。不要混淆
-`~/go2_maps/online/latest` 与 LIO-SAM/NDT 流程使用的 `~/go2_maps/latest`。固定模式
+`$GO2_PROJECT_ROOT/go2_maps/online/latest` 与 LIO-SAM/NDT 流程使用的 `$GO2_PROJECT_ROOT/go2_maps/latest`。固定模式
 不会自动挑选“质量最好”的地图，`map_dir` 指向哪一目录，就加载哪一目录的
 `map.yaml/map.pgm`。启动后可用下列命令核实实际来源：
 
@@ -99,7 +99,7 @@ AMCL，而不是默认的在线 SLAM：
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/latest
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest
 ```
 
 固定模式在 RViz 先点工具栏 `2D Pose Estimate`，再点 `Nav2 Goal`。默认
@@ -405,7 +405,7 @@ Gazebo、RViz 和标准动态参数窗口：
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/latest tuning_gui:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest tuning_gui:=true
 ```
 
 `rqt_reconfigure` 的改动只对本次进程生效，重启会恢复 YAML。不要动态修改控制器
@@ -433,7 +433,7 @@ ros2 run go2_navigation health_check --mode online_slam --localization amcl
 
 # 固定 AMCL
 ros2 run go2_navigation health_check --mode static_map --localization amcl \
-    --map-dir $HOME/go2_maps/online/latest
+    --map-dir $GO2_PROJECT_ROOT/go2_maps/online/latest
 ```
 
 预期 `/scan` 持续发布，`/pause_navigation` 为 `false`，TF 主链完整，公开与内部 action

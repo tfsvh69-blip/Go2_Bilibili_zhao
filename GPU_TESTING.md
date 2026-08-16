@@ -55,7 +55,7 @@ NDT GPU 进程：... ndt_relocalization_node ...
 ```
 
 测试点云只来自 `simdog/src/fast_gicp/data/`，不会写入
-`~/go2_maps/latest`，也不会覆盖正式地图。由于每次 CUDA 核函数运行很短，
+`$GO2_PROJECT_ROOT/go2_maps/latest`，也不会覆盖正式地图。由于每次 CUDA 核函数运行很短，
 脚本的低频采样可能显示较低瞬时利用率；计算进程、CUDA 启动日志和
 `/ndt_pose` 共同作为端到端验证依据。
 
@@ -75,7 +75,7 @@ ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ```
 
@@ -133,7 +133,7 @@ source scripts/setup_simdog.bash
 
 ```bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=omp
 ```
 

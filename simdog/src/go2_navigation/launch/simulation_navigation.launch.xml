@@ -1,6 +1,7 @@
 <launch>
   <!-- 统一仿真导航入口。默认在线扩图；固定地图需显式 navigation_mode:=static_map。 -->
-  <arg name="map_dir" default="$(env HOME)/go2_maps/latest"/>
+  <!-- 地图数据目录在项目根 go2_maps 内；未加载 setup 时回退到 $HOME 保持兼容。 -->
+  <arg name="map_dir" default="$(env GO2_PROJECT_ROOT $(env HOME))/go2_maps/latest"/>
   <arg name="map_session" default="new"/>
   <arg name="navigation_mode" default="online_slam"/>
   <arg name="localization" default="amcl"/>

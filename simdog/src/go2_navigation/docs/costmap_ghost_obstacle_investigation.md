@@ -98,7 +98,7 @@ ros2 topic echo /pause_navigation --once
 
 ### 1. 先区分地图、定位与 ObstacleLayer
 
-固定使用 `static_map + AMCL + ~/go2_maps/online/latest`，避免在线 SLAM 同时修改 `/map`。
+固定使用 `static_map + AMCL + $GO2_PROJECT_ROOT/go2_maps/online/latest`，避免在线 SLAM 同时修改 `/map`。
 在 RViz 一次只开启一个 Display：
 
 1. 只开 `Static Map`：异常岛仍存在，说明保存的 PGM 已污染；不进入 costmap 调参。

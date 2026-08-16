@@ -166,17 +166,17 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 
 | 目录 | 当前含义 | 固定 AMCL 是否推荐 |
 |---|---|---|
-| `~/go2_maps/home_01` | LIO-SAM 三维 PCD 投影出的旧二维图，范围过大且伪障碍多 | 否 |
-| `~/go2_maps/latest` | LIO-SAM/NDT 地图流程使用的目录 | 不作为 AMCL 默认图 |
-| `~/go2_maps/online/home_02` | 2026-08-12 保存的 Slam Toolbox 二维会话 | 是，当前可复现会话 |
-| `~/go2_maps/online/latest` | `save_online_map.sh` 更新的软链接，指向最近保存的在线会话 | 是，日常推荐 |
+| `$GO2_PROJECT_ROOT/go2_maps/home_01` | LIO-SAM 三维 PCD 投影出的旧二维图，范围过大且伪障碍多 | 否 |
+| `$GO2_PROJECT_ROOT/go2_maps/latest` | LIO-SAM/NDT 地图流程使用的目录 | 不作为 AMCL 默认图 |
+| `$GO2_PROJECT_ROOT/go2_maps/online/home_02` | 2026-08-12 保存的 Slam Toolbox 二维会话 | 是，当前可复现会话 |
+| `$GO2_PROJECT_ROOT/go2_maps/online/latest` | `save_online_map.sh` 更新的软链接，指向最近保存的在线会话 | 是，日常推荐 |
 
 固定地图推荐命令：
 
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/latest gui:=true rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest gui:=true rviz:=true
 ```
 
 启动后不要只凭 RViz 画面猜测，直接查询 `map_server` 实际读取的文件：
@@ -185,7 +185,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 ros2 param get /map_server yaml_filename
 ```
 
-当前预期路径应解析到 `~/go2_maps/online/home_02/map.yaml`。如果参数正确但 RViz
+当前预期路径应解析到 `$GO2_PROJECT_ROOT/go2_maps/online/home_02/map.yaml`。如果参数正确但 RViz
 仍保留旧画面，通常是旧 RViz 尚未退出，或新的 `map_server` 已经掉线而 RViz 仍显示
 最后一次收到的地图。先关闭所有旧导航/RViz 终端，只启动一套入口，再检查：
 
@@ -210,7 +210,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 # 续建最近一次在线会话
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=online_slam \
-    map_session:=$HOME/go2_maps/online/latest gui:=true rviz:=true
+    map_session:=$GO2_PROJECT_ROOT/go2_maps/online/latest gui:=true rviz:=true
 ```
 
 ## 4. 读懂地图、点云和黑色散点
@@ -698,7 +698,7 @@ RViz 观察方法：
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/latest tuning_gui:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest tuning_gui:=true
 ```
 
 在 `rqt_reconfigure` 左侧选 `/controller_server`，右侧搜索 `FollowPath`。一次只改一项：
@@ -726,7 +726,7 @@ RViz 和可选的 `rqt_reconfigure`：
 source scripts/setup_simdog.bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
   navigation_mode:=static_map localization:=amcl \
-  map_dir:=$HOME/go2_maps/online/latest \
+  map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
   gui:=true rviz:=true tuning_gui:=true
 ```
 
@@ -836,7 +836,7 @@ AMCL：
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
   navigation_mode:=static_map localization:=amcl \
-  map_dir:=$HOME/go2_maps/online/latest
+  map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest
 ```
 
 RViz 顶部先点 `2D Pose Estimate`：在地图中机器人真实位置按下鼠标，拖出狗头朝向；看到
@@ -1286,7 +1286,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml
 ros2 launch go2_navigation simulation_navigation.launch.xml \
   navigation_mode:=static_map \
   localization:=amcl \
-  map_dir:=$HOME/go2_maps/online/home_02
+  map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/home_02
 ```
 
 固定图启动后先用 RViz `2D Pose Estimate` 设置准确位置和朝向，再检查：
@@ -1295,7 +1295,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 ros2 run go2_navigation health_check \
   --mode static_map \
   --localization amcl \
-  --map-dir "$HOME/go2_maps/online/home_02"
+  --map-dir "$GO2_PROJECT_ROOT/go2_maps/online/home_02"
 ```
 
 反斜杠 `\` 必须是该行最后一个字符，后面不能再有空格。

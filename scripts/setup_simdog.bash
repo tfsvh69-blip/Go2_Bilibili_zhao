@@ -14,6 +14,11 @@ if [[ ! -f "${_go2_project_root}/simdog/install/setup.bash" ]]; then
     return 1
 fi
 
+# 清除 .bashrc 或之前 source 的其他 ROS 2 工作空间（如 dobot_ws）残留的
+# PYTHONPATH/AMENT/CMAKE/COLCON 前缀，避免污染 Gazebo 子进程导致启动失败。
+# 这些变量随后由 /opt/ros/humble 与 simdog 的 setup.bash 重新生成。
+unset PYTHONPATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH
+
 source /opt/ros/humble/setup.bash
 source "${_go2_project_root}/simdog/install/setup.bash"
 if command -v nvidia-smi >/dev/null 2>&1 &&

@@ -406,7 +406,7 @@ bash simdog/save_Map.sh
 
 # NDT 重定位（需先有 GlobalMap.pcd）
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 
 # 验证关键话题

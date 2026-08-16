@@ -193,7 +193,9 @@ def _build(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
-            "map_dir", default_value=os.path.expanduser("~/go2_maps/latest"),
+            "map_dir", default_value=os.path.join(
+                os.environ.get("GO2_PROJECT_ROOT", os.path.expanduser("~")),
+                "go2_maps/latest"),
             description="同源地图包目录"),
         DeclareLaunchArgument(
             "localization", default_value="amcl",

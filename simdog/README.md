@@ -41,13 +41,13 @@ ros2 launch lio_sam lidar.launch.py rviz:=true
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
-已有 `~/go2_maps/latest/GlobalMap.pcd` 时，改用重定位模式：
+已有 `$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd` 时，改用重定位模式：
 
 ```bash
 ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
 ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
@@ -115,10 +115,10 @@ LIO-SAM 运行期间执行：
 bash simdog/save_Map.sh
 ```
 
-默认保存到 `~/go2_maps/latest`，也可提供目标目录和分辨率：
+默认保存到 `$GO2_PROJECT_ROOT/go2_maps/latest`，也可提供目标目录和分辨率：
 
 ```bash
-bash simdog/save_Map.sh ~/go2_maps/warehouse 0.2
+bash simdog/save_Map.sh $GO2_PROJECT_ROOT/go2_maps/warehouse 0.2
 ```
 
 关闭建图模式的 LIO-SAM 后，再启动重定位模式：
@@ -126,7 +126,7 @@ bash simdog/save_Map.sh ~/go2_maps/warehouse 0.2
 ```bash
 ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/warehouse/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/warehouse/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ```
 

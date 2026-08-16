@@ -155,13 +155,13 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```bash
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 bash simdog/save_Map.sh
-test -s "$HOME/go2_maps/latest/GlobalMap.pcd" && echo "地图保存成功"
+test -s "$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd" && echo "地图保存成功"
 ```
 
-默认地图文件是 `~/go2_maps/latest/GlobalMap.pcd`。若要使用其他目录和分辨率：
+默认地图文件是 `$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd`。若要使用其他目录和分辨率：
 
 ```bash
-bash simdog/save_Map.sh "$HOME/go2_maps/warehouse" 0.2
+bash simdog/save_Map.sh "$GO2_PROJECT_ROOT/go2_maps/warehouse" 0.2
 ```
 
 建图完成后，依次在键盘遥控、LIO-SAM、Gazebo 终端按 `Ctrl+C` 停止。不要依赖
@@ -194,7 +194,7 @@ ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ```
 
@@ -219,7 +219,7 @@ bash simdog/start.sh
 ```
 
 该脚本会启动 Gazebo、LIO-SAM 和键盘遥控；如果存在
-`~/go2_maps/latest/GlobalMap.pcd`，还会以定位模式启动 CUDA NDT 并自动让 LIO-SAM
+`$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd`，还会以定位模式启动 CUDA NDT 并自动让 LIO-SAM
 让出 `map -> odom`。没有地图时会以建图模式启动并跳过 NDT。
 
 ### 启动后快速检查
@@ -315,10 +315,10 @@ ros2 launch go2_config gazebo_velodyne.launch.py unitree_bridge:=false
 bash simdog/save_Map.sh
 ```
 
-默认保存到 `~/go2_maps/latest`。也可以指定目录和分辨率：
+默认保存到 `$GO2_PROJECT_ROOT/go2_maps/latest`。也可以指定目录和分辨率：
 
 ```bash
-bash simdog/save_Map.sh ~/go2_maps/warehouse 0.2
+bash simdog/save_Map.sh $GO2_PROJECT_ROOT/go2_maps/warehouse 0.2
 ```
 
 地图保存依赖正在运行的 LIO-SAM `/lio_sam/save_map` 服务。
@@ -329,7 +329,7 @@ bash simdog/save_Map.sh ~/go2_maps/warehouse 0.2
 
 ```bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=cuda gpu_device_id:=0 use_rviz:=true
 ```
 
@@ -351,10 +351,10 @@ ros2 launch ndt_relocalization ndt_localization.launch.py \
 ```bash
 # 建图并生成同源地图包
 ros2 launch go2_navigation mapping.launch.xml
-bash simdog/src/go2_navigation/scripts/save_map.sh ~/go2_maps/latest
+bash simdog/src/go2_navigation/scripts/save_map.sh $GO2_PROJECT_ROOT/go2_maps/latest
 
 # 只由已有 GlobalMap.pcd 重建地图包（支持裁剪到导航区域）
-ros2 run go2_navigation build_map_bundle --map-dir ~/go2_maps/latest \
+ros2 run go2_navigation build_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest \
     --x-min -2 --x-max 8 --y-min -4 --y-max 4
 
 # 默认：在线 SLAM + 导航，从空图开始；map_session 可传已有会话目录续建。
@@ -364,7 +364,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 
 # 固定地图 + AMCL（静态 /map 不会继续扩展）
 ros2 launch go2_navigation simulation_navigation.launch.xml \
-    navigation_mode:=static_map map_dir:=$HOME/go2_maps/online/latest \
+    navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
     localization:=amcl controller_profile:=forward_mppi rviz:=true \
     tuning_gui:=true
 
@@ -495,8 +495,8 @@ bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
 ```
 
 该脚本保存的 `map.yaml/map.pgm` 可直接作为固定 AMCL 地图；AMCL 不要求三维 PCD。
-脚本还会让 `~/go2_maps/online/latest` 指向最近保存的在线会话。它与
-LIO-SAM/NDT 使用的 `~/go2_maps/latest` 不是同一目录；固定 AMCL 不应省略或写错
+脚本还会让 `$GO2_PROJECT_ROOT/go2_maps/online/latest` 指向最近保存的在线会话。它与
+LIO-SAM/NDT 使用的 `$GO2_PROJECT_ROOT/go2_maps/latest` 不是同一目录；固定 AMCL 不应省略或写错
 `map_dir`。固定模式不会自动选择地图质量，实际来源必须这样核实：
 
 ```bash
@@ -514,7 +514,7 @@ LIO-SAM PCD 转栅格只保留给 NDT 同源地图实验，不建议作为默认
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$HOME/go2_maps/online/learning_room rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room rviz:=true
 ```
 
 导航中普通取消点击 RViz `Navigation 2 -> Cancel`。卡住时使用：
@@ -565,7 +565,7 @@ map -> odom -> base_footprint -> base_link -> 关节与传感器
 
 ```bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
-    map_path:=$HOME/go2_maps/latest/GlobalMap.pcd \
+    map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
     registration_backend:=omp
 ```
 
