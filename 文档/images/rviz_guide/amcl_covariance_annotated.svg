@@ -1,47 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="650" viewBox="0 0 1080 650">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="790" viewBox="0 0 1280 790" role="img" aria-labelledby="title description">
+  <title id="title">AMCL Pose 协方差图形解读</title>
+  <desc id="description">左侧为定位失信时的 RViz 实际截图，右侧通过五个不交叉的标注解释机器人估计位姿、位置协方差、航向协方差、估计朝向和全局路径。</desc>
   <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L9,3 z" fill="#263238"/>
+    <marker id="arrow-dark" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#38505a"/>
     </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#17313a" flood-opacity="0.14"/>
+    </filter>
     <style>
-      .title { font: 700 27px sans-serif; fill: #102027; }
-      .label { font: 700 22px sans-serif; fill: #102027; }
-      .body { font: 18px sans-serif; fill: #263238; }
-      .line { stroke: #263238; stroke-width: 3; fill: none; marker-end: url(#arrow); }
-      .badge { fill: #fff; stroke: #263238; stroke-width: 3; }
-      .num { font: 700 19px sans-serif; text-anchor: middle; dominant-baseline: central; fill: #263238; }
+      .heading { font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; font-size: 31px; font-weight: 700; fill: #102a33; }
+      .section { font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 1px; fill: #60747c; }
+      .card-title { font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; font-size: 21px; font-weight: 700; fill: #16333d; }
+      .card-body { font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; font-size: 16px; fill: #40535a; }
+      .connector { stroke: #38505a; stroke-width: 2.5; fill: none; marker-end: url(#arrow-dark); }
+      .badge-text { font-family: 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif; font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: #fff; }
     </style>
   </defs>
-  <rect width="1080" height="650" fill="#f7f9fa"/>
-  <text x="30" y="38" class="title">AMCL Pose 图形怎样读：图越大，定位越不确定</text>
-  <image href="amcl_covariance_lost.png" x="30" y="58" width="509" height="582"/>
 
-  <circle cx="277" cy="300" r="17" class="badge"/><text x="277" y="300" class="num">1</text>
-  <circle cx="390" cy="405" r="17" class="badge"/><text x="390" y="405" class="num">2</text>
-  <circle cx="185" cy="215" r="17" class="badge"/><text x="185" y="215" class="num">3</text>
-  <circle cx="325" cy="338" r="17" class="badge"/><text x="325" y="338" class="num">4</text>
-  <circle cx="290" cy="322" r="17" class="badge"/><text x="290" y="322" class="num">5</text>
+  <rect width="1280" height="790" fill="#f5f8f9"/>
+  <rect x="24" y="22" width="1232" height="746" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+  <text x="58" y="76" class="heading">AMCL Pose 图形怎样读：图越大，定位越不确定</text>
+  <line x1="58" y1="100" x2="1222" y2="100" stroke="#d9e3e6" stroke-width="2"/>
 
-  <path d="M735 115 C650 115 600 170 295 285" class="line"/>
-  <text x="570" y="84" class="label">1 机器人估计位姿</text>
-  <text x="570" y="110" class="body">不是 Gazebo 真身，而是 AMCL 认为狗所在的位置。</text>
+  <text x="58" y="136" class="section">实际 RViz 截图（定位已失信）</text>
+  <rect x="58" y="156" width="510" height="582" rx="10" fill="#203238"/>
+  <clipPath id="screenshot-clip"><rect x="58" y="156" width="510" height="582" rx="10"/></clipPath>
+  <image href="amcl_covariance_lost.png" x="58" y="156" width="510" height="582" clip-path="url(#screenshot-clip)"/>
+  <rect x="58" y="156" width="510" height="582" rx="10" fill="none" stroke="#cad8dc" stroke-width="2"/>
 
-  <path d="M740 225 C640 235 590 300 415 390" class="line"/>
-  <text x="570" y="194" class="label">2 紫色椭圆：x/y 协方差</text>
-  <text x="570" y="220" class="body">像“我大概在这片区域”；越大，位置越拿不准。</text>
+  <!-- 截图内的编号，分别贴在对应的真实 RViz 元素旁。 -->
+  <g>
+    <circle cx="290" cy="455" r="18" fill="#167c80" stroke="#fff" stroke-width="3"/><text x="290" y="455" class="badge-text">1</text>
+    <circle cx="386" cy="526" r="18" fill="#9156a8" stroke="#fff" stroke-width="3"/><text x="386" y="526" class="badge-text">2</text>
+    <circle cx="406" cy="610" r="18" fill="#c99a00" stroke="#fff" stroke-width="3"/><text x="406" y="610" class="badge-text">3</text>
+    <circle cx="245" cy="555" r="18" fill="#df6a22" stroke="#fff" stroke-width="3"/><text x="245" y="555" class="badge-text">4</text>
+    <circle cx="245" cy="440" r="18" fill="#3f9b5a" stroke="#fff" stroke-width="3"/><text x="245" y="440" class="badge-text">5</text>
+  </g>
 
-  <path d="M740 335 C630 335 560 270 205 220" class="line"/>
-  <text x="570" y="304" class="label">3 黄色扇形：yaw 协方差</text>
-  <text x="570" y="330" class="body">像指南针误差范围；拉成长带表示朝向已失信。</text>
+  <text x="620" y="136" class="section">把这五个图形当作“AMCL 对自己有多确定”的报告</text>
 
-  <path d="M740 445 C620 450 535 405 345 346" class="line"/>
-  <text x="570" y="414" class="label">4 橙色箭头：估计朝向</text>
-  <text x="570" y="440" class="body">箭头与 Gazebo 狗头方向明显不符时，先重定位。</text>
+  <!-- 引线全部止于右栏卡片左边缘，绝不穿过正文。 -->
+  <path d="M308 455 H588 V190 H612" class="connector"/>
+  <path d="M404 526 H576 V304 H612" class="connector"/>
+  <path d="M424 610 H564 V418 H612" class="connector"/>
+  <path d="M263 555 H552 V532 H612" class="connector"/>
+  <path d="M263 440 H540 V646 H612" class="connector"/>
 
-  <path d="M740 555 C620 550 500 450 307 333" class="line"/>
-  <text x="570" y="524" class="label">5 绿色线：全局规划路径</text>
-  <text x="570" y="550" class="body">导航打算走的路线；它正确与否依赖定位和地图。</text>
+  <g filter="url(#shadow)">
+    <rect x="620" y="158" width="574" height="82" rx="11" fill="#effafa" stroke="#b8e0df"/>
+    <rect x="620" y="272" width="574" height="82" rx="11" fill="#fbf4fc" stroke="#dec6e5"/>
+    <rect x="620" y="386" width="574" height="82" rx="11" fill="#fff9e9" stroke="#ebd184"/>
+    <rect x="620" y="500" width="574" height="82" rx="11" fill="#fff3ec" stroke="#f1c6aa"/>
+    <rect x="620" y="614" width="574" height="82" rx="11" fill="#f1f9f2" stroke="#b9ddc1"/>
+  </g>
 
-  <rect x="566" y="585" width="480" height="45" rx="8" fill="#fff3cd" stroke="#e0a800"/>
-  <text x="582" y="614" class="body">关键判断：扇形/椭圆横穿地图 = 定位故障，不是雷达范围。</text>
+  <g>
+    <circle cx="650" cy="191" r="16" fill="#167c80"/><text x="650" y="191" class="badge-text">1</text>
+    <text x="678" y="190" class="card-title">机器人估计位姿</text>
+    <text x="678" y="216" class="card-body">不是 Gazebo 真身，而是 AMCL 认为狗所在的位置。</text>
+
+    <circle cx="650" cy="305" r="16" fill="#9156a8"/><text x="650" y="305" class="badge-text">2</text>
+    <text x="678" y="304" class="card-title">紫色椭圆：x/y 协方差</text>
+    <text x="678" y="330" class="card-body">越大，代表 AMCL 对“自己在哪儿”越拿不准。</text>
+
+    <circle cx="650" cy="419" r="16" fill="#c99a00"/><text x="650" y="419" class="badge-text">3</text>
+    <text x="678" y="418" class="card-title">黄色扇形：yaw 协方差</text>
+    <text x="678" y="444" class="card-body">拉成长带，代表 AMCL 连“朝哪边”都快说不清了。</text>
+
+    <circle cx="650" cy="533" r="16" fill="#df6a22"/><text x="650" y="533" class="badge-text">4</text>
+    <text x="678" y="532" class="card-title">橙色箭头：估计朝向</text>
+    <text x="678" y="558" class="card-body">它应与 Gazebo 狗头方向基本一致；明显不符先重定位。</text>
+
+    <circle cx="650" cy="647" r="16" fill="#3f9b5a"/><text x="650" y="647" class="badge-text">5</text>
+    <text x="678" y="646" class="card-title">绿色线：全局规划路径</text>
+    <text x="678" y="672" class="card-body">路径正确与否依赖定位和地图；定位跳，路径起点也会跳。</text>
+  </g>
+
+  <rect x="620" y="712" width="574" height="34" rx="8" fill="#fff3cd" stroke="#e0a800"/>
+  <text x="640" y="735" class="card-body" font-weight="700">关键判断：扇形／椭圆横穿地图 = 定位故障，不是雷达范围。</text>
 </svg>

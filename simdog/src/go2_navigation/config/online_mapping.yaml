@@ -12,7 +12,12 @@ pointcloud_to_laserscan:
     # 导航安全链长期需要 /scan；避免订阅图变化触发 lazy 订阅竞态后断流。
     always_subscribe: true
     min_height: -0.05
-    max_height: 0.10
+    # 建图/导航共用切片：上界 0.10m 对矮障碍（my.world 里 0.42m 高的 Wood 墙，
+    # 墙顶相对 velodyne 仅 +0.094m）只有 6mm 余量，VLP-16 垂直环量化抖动会让墙顶
+    # 在切片边缘反复丢，导致静态地图记不住墙，导航时被当成“幽灵障碍”。
+    # 提到 0.15m（绝对上界 0.473m）给墙顶留 56mm 余量；0.9m 内本体点仍在 range_min
+    # 盲区，不会引入腿点。详见 docs/costmap_ghost_obstacle_investigation.md。
+    max_height: 0.15
     # 保持最大角略小于完整 pi 端点：转换器分配 720 个 bin，恰好为 pi
     # 的点若计算出索引 720 会越界。
     angle_min: -3.14159
@@ -21,7 +26,14 @@ pointcloud_to_laserscan:
     scan_time: 0.10
     range_min: 0.90
     range_max: 15.0
-    use_inf: true
+    # 无回波方向输出 range_max(15.0m) 而非 +inf。costmap 的 LaserScan source 未设
+    # inf_is_valid(Nav2 1.1.20 默认 false)，+inf 不参与 raytrace clearing，会使旧
+    # lethal 格残留成“幽灵障碍”，直到某条有限射线偶然穿过才消失（表现为靠近才消失）。
+    # 改 false 后无回波=15.0m 端点：它等于 obstacle/raytrace max range(15.0)，marking
+    # 用严格小于判断不会误标为障碍，但会被 raytrace 正常清除空射线。AMCL/slam_toolbox
+    # 都把 max-range beam 当作 z_max 低权重处理，+inf 与 15.0m 等价，对定位无影响。
+    # 详见 docs/costmap_ghost_obstacle_investigation.md。
+    use_inf: false
     inf_epsilon: 1.0
 
 slam_toolbox:

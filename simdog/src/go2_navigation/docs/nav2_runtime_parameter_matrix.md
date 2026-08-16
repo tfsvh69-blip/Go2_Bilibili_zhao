@@ -1,7 +1,7 @@
 # Go2 Nav2 运行时参数能力矩阵
 
 更新时间：2026-08-14；适用版本：ROS 2 Humble、Navigation2 `1.1.20`、
-`controller_profile:=forward_rpp`。
+`controller_profile:=forward_rpp`（RPP 对照档；默认档已改为 `forward_mppi`）。
 
 本文是 `nav_tuner` 的审计依据。代码中的唯一机器可读注册表位于
 `go2_navigation/nav_tuning.py`；表内“LIVE”不是指参数服务返回成功，而是插件确有动态

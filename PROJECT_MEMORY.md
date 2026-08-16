@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-更新时间：2026-08-14
+更新时间：2026-08-15
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
@@ -13,7 +13,7 @@ Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
 `go2_navigation` 当前以统一入口提供两条互斥闭环：默认
 `online_slam` 使用 Slam Toolbox 边建图边导航；`static_map` 默认以 AMCL 在固定二维图
 定位。`lidar_ndt` 通过二维全局 EKF、`ndt_cuda` 作为实验后端保留。两种模式都复用
-SmacPlanner2D + SmoothPath + Rotation Shim（内层 RPP，默认）/MPPI（对照）以及
+SmacPlanner2D + SmoothPath + MPPI（DiffDrive，默认）/Rotation Shim+RPP（对照）以及
 `twist_mux → velocity_smoother → collision_monitor → /cmd_vel` 安全控制链。
 全局与局部代价图的 `/scan` observation source 均已显式接受 `0–2.0 m`
 高度的障碍；移动障碍 marking、1 Hz 全局重规划和 RPP 碰撞约束链路已接通。但新发现
@@ -28,6 +28,82 @@ LiDAR 盲区内，当前系统级障碍安全门为 FAIL，不能继续描述为
 local/global costmap 已使用 URDF collision 与 220 帧 CHAMP 步态联合标定的 24 顶点
 footprint，padding 为 `0.035 m`；`footprint_calibrator --verify-only` 可直接核对两张
 costmap 的实际发布轮廓。
+
+## 2026-08-16 运动时全局代价图幽灵障碍现场排查（进行中，未定根因）
+
+### 用户现象
+
+固定 `static_map + AMCL` 导航时，RViz 全局代价图出现不属于静态墙体的幽灵代价
+区域。三个特征：转角/运动时出现；机器人靠近时消失；位置随机漂移，运动时像
+"整个地图偏移一下、偏移瞬间被保留成代价区域"。绝大部分 `/scan` 数据看起来正确。
+用户判定为激光雷达数据问题，明确不是地图、不是物理遮挡、不是定位。
+
+### 本轮已做的改动（均基于假设，未经确认根因，未回滚）
+
+- `pointcloud_to_laserscan`（`online_mapping.yaml`）：`use_inf` `true→false`，
+  无回波输出 `range_max=15.0m` 端点，预期让 costmap raytrace 正常清除空射线。
+- `pointcloud_to_laserscan`：`max_height` `0.10→0.15`，给矮障碍墙顶留余量。
+- `velodyne.xacro` gpu_ray：水平 `samples` `1800→900`，渲染耗时减半。
+  实测渲染刷新明显变快，但幽灵障碍现象未解决 → 渲染耗时不是主因。
+
+### 已用 bag 数据/源码排除的方向
+
+- `/scan` 近距回波投影到 odom 稳定（环境固定物），TF（`odom→base_footprint`）
+  平滑，AMCL 协方差小 → 排除定位/TF 抖动/点云时间错位。
+- 运动时段固定 odom 区域墙质心漂移 80–160mm、静止时段 <20mm，但固定方向墙
+  投影稳定 → 无法实锤 gpu_ray 时间错位。
+- Nav2 1.1.20 源码：`transform_tolerance` 是 costmap 级而非 source 级参数；
+  `inf_is_valid` 是 source 级默认 false。`cellDistance` 用 `ceil`，0.05 m 栅格下
+  `15.0m` 与 `14.9999m` 落在同一格，marking 闭区间 `dist<=max_range_cells` 都会标。
+  因此 `use_inf=false` 的 15.0m 端点可能反而在 15 m 处产生幽灵 lethal 格；
+  `inf_is_valid` 的 `-0.0001` 技巧在 0.05 m 栅格下未必能避开 marking。
+
+### 当前推测（均未现场实测，只记录为待验证假设）
+
+1. `use_inf=false` 的 15.0 m 端点撞上 `obstacle_max_range=15.0` marking 闭区间，
+   空方向在 15 m 处被标 lethal → 靠近消失/位置随机。
+2. gpu_ray 瞬时全向渲染与机器人运动错位（未实锤，samples 降载后现象未消失）。
+3. 现场应在幽灵格出现的瞬间抓 `/global_costmap/costmap_raw`、`/scan`、`/tf`，
+   对比出现/消失时什么变了，而不是事后分析历史 bag。
+
+### 遗留问题与下一步
+
+- 根因未定，本轮改动是待验证假设，未形成安全闭环。
+- 下一步：恢复/重查 `use_inf` 与 `obstacle_max_range` 组合，或在现象发生时现场
+  抓 costmap raw 与 TF 对比。
+
+## 2026-08-15 默认控制档切换为前向 MPPI
+
+### 阶段目标
+
+按用户要求把统一导航入口的默认控制器算法从 RPP 切换为 MPPI。控制器插件无法在
+运行中的 rqt 热切换，切档必须重启导航，因此通过修改 launch 默认值落地。
+
+### 实际操作与结果
+
+- `simulation_navigation.launch.xml`、`simulation_online_mapping_navigation.launch.xml`
+  与 `navigation.launch.py` 的 `controller_profile` 默认值由 `forward_rpp` 改为
+  `forward_mppi`（DiffDrive MPPI：40 步 × 0.10 s、batch 800、前向 `vx∈[0,0.27]`、
+  `vy=0`、`wz≤0.40`）。
+- `forward_rpp`（Rotation Shim + RPP）降为显式对照档；`omni_mppi` 保持全向对照。
+- 同步更新测试断言、三个控制器 YAML 注释、CLAUDE.md/AGENTS.md（已用 `cmp` 验证一致）、
+  根 README、go2_navigation README、初学者图解手册、导航测试手册与运行时参数矩阵。
+- `nav_tuner` 的调参注册表仍面向 RPP 对照档，文档已注明需在
+  `controller_profile:=forward_rpp` 下使用。
+
+### 验证命令
+
+```bash
+cd simdog/src/go2_navigation && python3 -m pytest test/test_controller_profiles.py
+cmp -s AGENTS.md CLAUDE.md
+```
+
+### 遗留问题与下一步
+
+- 尚未在 Gazebo 实测 MPPI 默认档的短目标/转向表现，也未与 RPP 做 A/B 对比；
+  MPPI 的采样成本（batch 800 @ 10 Hz）与 critic 权重仍需按实测校准。
+- 调参工具与 RPP 参数矩阵仍以 RPP 为对象；MPPI 运行时调参
+  （`vx_max`/`wz_max`/critic 权重）的注册表尚未补齐。
 
 ## 2026-08-14 全局代价图幽灵障碍与近距碰撞新阻塞
 

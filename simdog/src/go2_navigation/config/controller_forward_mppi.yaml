@@ -1,7 +1,8 @@
-# Go2 前向 DiffDrive MPPI 对照档。
+# Go2 默认前向 DiffDrive MPPI 控制档。
 #
-# 用于对比 RPP 与预测控制器的连续圆弧效果，不替代默认
-# forward_rpp。采样规模按当前 10 Hz 控制频率限制，常态关闭轨迹可视化。
+# 每个控制周期采样 800 条候选轨迹并按各 critic 加权选优；前向限定
+# vx∈[0,0.27]、vy=0。采样规模按当前 10 Hz 控制频率限制，常态关闭轨迹
+# 可视化。需要 RPP 对照时显式传 controller_profile:=forward_rpp。
 controller_server:
   ros__parameters:
     FollowPath:
@@ -20,7 +21,7 @@ controller_server:
       iteration_count: 1
       temperature: 0.3
       gamma: 0.015
-      visualize: false
+      visualize: true
       transform_tolerance: 0.2
       critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic",
                 "ObstaclesCritic", "PathAlignCritic", "PathFollowCritic",

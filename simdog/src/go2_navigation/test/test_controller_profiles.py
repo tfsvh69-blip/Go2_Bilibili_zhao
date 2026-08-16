@@ -101,12 +101,12 @@ def test_omni_mppi_profile_remains_available_for_comparison():
     assert controller["vy_max"] == 0.15
 
 
-def test_unified_navigation_defaults_to_online_slam_amcl_and_forward_rpp():
+def test_unified_navigation_defaults_to_online_slam_amcl_and_forward_mppi():
     root = ElementTree.parse(
         PACKAGE_ROOT / "launch" / "simulation_navigation.launch.xml").getroot()
     arguments = {item.attrib["name"]: item.attrib.get("default")
                  for item in root.findall("arg")}
-    assert arguments["controller_profile"] == "forward_rpp"
+    assert arguments["controller_profile"] == "forward_mppi"
     assert arguments["navigation_mode"] == "online_slam"
     assert arguments["localization"] == "amcl"
     assert arguments["gui"] == "true"

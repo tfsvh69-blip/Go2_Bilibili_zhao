@@ -360,12 +360,12 @@ ros2 run go2_navigation build_map_bundle --map-dir ~/go2_maps/latest \
 # 默认：在线 SLAM + 导航，从空图开始；map_session 可传已有会话目录续建。
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=online_slam map_session:=new \
-    controller_profile:=forward_rpp rviz:=true
+    controller_profile:=forward_mppi rviz:=true
 
 # 固定地图 + AMCL（静态 /map 不会继续扩展）
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map map_dir:=$HOME/go2_maps/online/latest \
-    localization:=amcl controller_profile:=forward_rpp rviz:=true \
+    localization:=amcl controller_profile:=forward_mppi rviz:=true \
     tuning_gui:=true
 
 # 健康检查
@@ -384,33 +384,39 @@ ros2 run go2_navigation health_check --mode online_slam --localization amcl
 `map -> odom` 继续驱动机器人。重新定位前先停止目标，再准确设置位置和箭头朝向。
 
 默认规划/控制链为
-`SmacPlanner2D → SmoothPath(SimpleSmoother) → RotationShimController(RPP)`。
-外层 Rotation Shim 在到达 XY 容差后用零线速度完成目标航向，内部 RPP 继续负责
-前向路径跟随（`vx≤0.27 m/s`）。行为树的 `TerminalPathLatch` 会先确认当前路径确属
+`SmacPlanner2D → SmoothPath(SimpleSmoother) → MPPI(DiffDrive)`。
+MPPI 每个控制周期采样 800 条候选轨迹（40 步 × `0.10 s` 预测窗口），由 Goal、
+GoalAngle、Obstacles、PathAlign/Follow/Angle 与 PreferForward 等 critic 加权选出
+一条更优轨迹，是预测型控制器；前向限定 `vx∈[0,0.27 m/s]`、`vy=0`、`wz≤0.40 rad/s`。
+行为树的 `TerminalPathLatch` 会先确认当前路径确属
 本次目标：路径末端允许 `0.075 m` 栅格中心误差和 `0.01 rad` 数值航向误差，再用实时
 `map→base_footprint` TF 确认机器人同时进入原始目标与路径末端的 `0.30 m` XY 容差。
 首次进入后保持锁存并暂停 1 Hz 重规划，防止 Humble 的 `setPlan()` 重置终点定向状态。
 定位短时漂出边界不会解除锁存，新目标、行为树 `halt()` 或 recovery 会清除锁存；同一
 XY 只改变 yaw 也必须先得到一条新路径。Smac 的 `GridBased.tolerance=0.0`，不可达的
 原始目标会明确规划失败，不再静默选择 `0.25 m` 内的替代终点。
-`forward_mppi` 是 DiffDrive 圆弧对照档，
-`omni_mppi` 保留原有全向对照档，两者均不是默认。RViz 中绿色
+`forward_rpp` 是 Rotation Shim + RPP 对照档（原默认），`omni_mppi` 是全向对照档，
+两者均需显式传 `controller_profile:=forward_rpp|omni_mppi`。RViz 中绿色
 `Raw Global Plan` 来自 `/plan`，蓝色 `Controller Path (Smoothed)` 来自
 `/received_global_plan`，可用来区分“原始路线”与“实际跟随路线”。
 
-默认 shim 参数为 `rotate_to_goal_heading=true`、`closed_loop=false`、转速
-`0.45 rad/s`、角加速度 `1.0 rad/s²`、路径进入/退出阈值 `1.40/0.40 rad`、采样距离
-`0.50 m`、旋转碰撞预测 `1.0 s`；内层 RPP 的 `use_rotate_to_heading=false`，普通弯道
-保持前进画弧，仅接近侧后方的路径由外层 shim 停车对齐。普通到达标准为
-`0.30 m/0.15 rad`。可这样回读，
-开环这里只表示 shim 按角加速度约束生成命令，不是关闭姿态闭环；目标 yaw 仍由 TF 和
-GoalChecker 闭环判定。这样可避免把当前仿真里程计的 1 秒角速度窗口当成低延迟反馈。
-不应通过放宽 yaw 或关闭碰撞保护解决终点摆动：
+`forward_rpp` 对照档由外层 Rotation Shim 包裹 RPP：进入 `0.30 m` XY 容差后保持
+`linear.x=0`，以 `0.45 rad/s`、最大 `1.0 rad/s²` 对齐到 `0.15 rad` yaw；shim 参数为
+`rotate_to_goal_heading=true`、`closed_loop=false`、路径进入/退出阈值
+`1.40/0.40 rad`、采样距离 `0.50 m`、旋转碰撞预测 `1.0 s`，内层 RPP 的
+`use_rotate_to_heading=false`。普通到达标准为 `0.30 m/0.15 rad`。`closed_loop=false`
+只表示 shim 按角加速度约束生成命令，不把当前仿真里程计的 1 秒角速度窗口当成低延迟
+反馈，并不是关闭姿态闭环；目标 yaw 仍由 TF 和 GoalChecker 闭环判定。不应通过放宽
+yaw 或关闭碰撞保护解决终点摆动。可这样回读当前控制器插件与参数：
 
 ```bash
-ros2 param get /controller_server FollowPath.primary_controller
-ros2 param get /controller_server FollowPath.rotate_to_goal_heading
-ros2 param get /controller_server FollowPath.closed_loop
+ros2 param get /controller_server FollowPath.plugin
+ros2 param get /controller_server FollowPath.vx_max
+ros2 param get /controller_server FollowPath.wz_max
+# forward_rpp 对照档下可回读 shim 参数：
+# ros2 param get /controller_server FollowPath.primary_controller
+# ros2 param get /controller_server FollowPath.rotate_to_goal_heading
+# ros2 param get /controller_server FollowPath.closed_loop
 ```
 
 终点转向异常时先取消当前目标，并通过安全输入 `/cmd_vel_teleop` 验证底层；导航运行时
@@ -602,11 +608,12 @@ ros2 topic echo --once /ndt_pose
 - NVIDIA OpenGL 异常时，先设置 `GO2_FORCE_NVIDIA_RENDERING=0`；仍有问题再
   按需使用 `LIBGL_ALWAYS_SOFTWARE=1`。
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
-- 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + RPP/MPPI 与安全链
+- 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + MPPI/RPP 与安全链
   已接通；在线模式已通过 12 次连续短目标。但新发现的幽灵障碍 clearing 与近距碰撞使
   当前系统级安全门为 FAIL；10 分钟压力、移动障碍和完整失效注入不得提前开始。
-- 默认 `forward_rpp` 已改为 Rotation Shim、实时 TF 终点路径锁存、0.45 rad/s 开环限加速度
-  定向，并提供五层只读诊断。旧实现的两个内部同 XY `±90°` 专项目标曾成功，但新锁存
+- 默认控制档已由 `forward_rpp`（Rotation Shim + RPP）切换为 `forward_mppi`
+  （DiffDrive MPPI）。RPP 对照档仍保留 Rotation Shim、实时 TF 终点路径锁存、
+  0.45 rad/s 开环限加速度定向与五层只读诊断。旧实现的两个内部同 XY `±90°` 专项目标曾成功，但新锁存
   的纯旋转基线仍因 CHAMP 实体旋转增益/漂移未全部达标而失败；`stance_depth=0.0 m`
   已显著缩小方向差异，但仍没有继续执行固定
   `home_02` 12 目标；此前 AMCL `map→odom` 米级修正还曾使精确 `180°` 目标进入障碍

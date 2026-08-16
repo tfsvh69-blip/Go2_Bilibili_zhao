@@ -42,8 +42,9 @@ controller_server:
       xy_goal_tolerance: 0.10
       yaw_goal_tolerance: 0.10
 
-    # FollowPath 的具体插件和参数由 controller_forward_rpp.yaml 或
-    # controller_omni_mppi.yaml 提供，避免两套插件参数互相污染。
+    # FollowPath 的具体插件和参数由 controller_profile 参数文件
+    # （controller_forward_mppi.yaml / controller_forward_rpp.yaml /
+    # controller_omni_mppi.yaml）提供，避免各档插件参数互相污染。
 
 smoother_server:
   ros__parameters:

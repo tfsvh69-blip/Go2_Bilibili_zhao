@@ -60,7 +60,7 @@
 - `simdog/src/go2_unitree_sim_bridge/`：把 Gazebo/CHAMP 映射为 Unitree Sport API 消息、话题和受支持请求。
 - `simdog/src/lidar_localization_ros2/`：BSD-2-Clause 的 NDT/GICP 实验定位库，提供自动初始定位、诊断、重定位与 PCD 转二维地图工具。
 - `simdog/src/go2_navigation/`：自主导航包，默认提供在线 Slam Toolbox 建图导航，固定地图默认使用 AMCL，
-  NDT + 二维 EKF 作为实验档，并提供 SmacPlanner2D + RPP（默认）/MPPI（对照）、安全控制链与健康检查。
+  NDT + 二维 EKF 作为实验档，并提供 SmacPlanner2D + MPPI（默认）/RPP（对照）、安全控制链与健康检查。
 - `simdog/src/unitree_ros2_interfaces/`：固定的 Unitree 官方 `unitree_ros2 v0.3.0` `unitree_go`、`unitree_api` 接口快照。
 - `simdog/src/LIO-SAM/`：Velodyne 与 IMU 融合建图。
 - `simdog/src/ndt_relocalization/`：基于 PCD 地图的 NDT 重定位 ROS 2 节点。
@@ -133,10 +133,10 @@ ros2 run go2_navigation health_check --mode online_slam --localization amcl
 
 两种模式都由统一入口将 Unitree bridge 固定接入 `/cmd_vel_unitree`。旧的
 `simulation_online_mapping_navigation.launch.xml` 仅保留为兼容 wrapper。默认控制档为
-`controller_profile:=forward_rpp`（前向优先），`forward_mppi` 是 DiffDrive 对照，
-`omni_mppi` 是全向对照。默认路径链为
-`SmacPlanner2D -> SmoothPath(SimpleSmoother) -> RPP`；`PoseProgressChecker` 将平移和
-转向都计为进展，普通目标容差为 `0.30 m/0.25 rad`。传递
+`controller_profile:=forward_mppi`（前向 DiffDrive MPPI），`forward_rpp` 是
+Rotation Shim + RPP 对照档，`omni_mppi` 是全向对照。默认路径链为
+`SmacPlanner2D -> SmoothPath(SimpleSmoother) -> MPPI`；`PoseProgressChecker` 将平移和
+转向都计为进展，普通目标容差为 `0.30 m/0.15 rad`。传递
 `tuning_gui:=true` 可打开标准 `rqt_reconfigure`；其修改只在当前运行生效，
 不得用于关闭碰撞或锁速保护。导航控制链为
 `Nav2/键盘/Unitree Move -> twist_mux -> velocity_smoother -> collision_monitor -> /cmd_vel -> CHAMP`；

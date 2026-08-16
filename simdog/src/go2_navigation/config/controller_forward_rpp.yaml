@@ -1,5 +1,7 @@
-# Go2 默认前向控制档。
+# Go2 前向 RPP 对照档（Rotation Shim + RPP）。
 #
+# 原默认档；默认已改为 controller_forward_mppi.yaml。此档保留用于 MPPI
+# A/B 对照，以及配套 nav_tuner 的 RPP 运行时调参流程。
 # Rotation Shim 在进入目标 XY 容差后锁存位置并完成最终航向对齐，内部
 # Regulated Pure Pursuit 继续只输出前向线速度和角速度。这样既保留
 # “接近侧后方时先对齐、普通大弯连续走”，又避免四足落足漂移让 RPP

@@ -15,6 +15,9 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
     controller_profile:=forward_rpp tuning_gui:=true
 ```
 
+> 默认档已是 `forward_mppi`；本节调的是 RPP 参数，因此显式传
+> `controller_profile:=forward_rpp` 运行 RPP 对照档。
+
 该命令默认打开 Gazebo GUI 和 RViz。RViz 中对照绿色 `Raw Global Plan`
 与蓝色 `Controller Path (Smoothed)`；在 rqt 中选 `/controller_server`。只调
 `desired_linear_vel`、lookahead、`rotate_to_heading_*`、`max_angular_accel`、
@@ -201,7 +204,8 @@ ros2 topic echo --once /alignment_status               # fitness_score < 6.0 表
 验证 Nav2 全部节点激活、控制链话题齐全。
 
 ```bash
-# 推荐：停止本手册前面分开启动的 Gazebo/定位器后，一次启动完整闭环：
+# 推荐：停止本手册前面分开启动的 Gazebo/定位器后，一次启动完整闭环
+# （本节观察 RPP 对照档行为，故显式传 forward_rpp；默认档已是 forward_mppi）：
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     map_dir:=$HOME/go2_maps/latest localization:=lidar_ndt \
     controller_profile:=forward_rpp gui:=false rviz:=true
@@ -298,10 +302,10 @@ ros2 topic echo /cmd_vel            # Nav2 输出的速度（经 collision_monit
 ros2 topic echo /cmd_vel_smoothed   # 平滑后的速度
 ros2 topic echo --once /plan        # 全局路径（应有点）
 ros2 topic echo --once /odom/ground_truth --field pose.pose.position   # 位置在变 = 在走
-ros2 topic echo /cmd_vel_nav --field linear.y  # RPP 默认档应持续接近 0
+ros2 topic echo /cmd_vel_nav --field linear.y  # RPP 对照档下应持续接近 0
 ```
 
-### 学会看 RPP 的行为
+### 学会看 RPP 对照档的行为
 
 1. 故意把目标箭头画成与当前朝向相差较大；偏差超过约 `0.35 rad`
    时，应先看到机器人转向路径，而不是斜着横移。
@@ -390,7 +394,7 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ros2 launch go2_navigation simulation_online_mapping_navigation.launch.xml \
-    map_session:=new controller_profile:=forward_rpp gui:=true rviz:=true
+    map_session:=new controller_profile:=forward_mppi gui:=true rviz:=true
 ```
 
 ### RViz 里具体看什么

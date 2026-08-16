@@ -4,7 +4,7 @@
   <arg name="rviz" default="true"/>
   <arg name="tuning_gui" default="false"/>
   <arg name="use_sim_time" default="true"/>
-  <arg name="controller_profile" default="forward_rpp"/>
+  <arg name="controller_profile" default="forward_mppi"/>
   <arg name="map_session" default="new"/>
   <arg name="minimum_goal_clearance_m" default="0.10"/>
 

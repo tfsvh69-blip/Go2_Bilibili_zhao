@@ -267,8 +267,9 @@ ros2 topic hz /local_costmap/costmap_updates
 [Obstacle Layer 参数说明](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)
 与 [Nav2 Humble 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_costmap_2d/plugins/obstacle_layer.cpp)。
 
-默认 RPP 不生成另一条可视化“局部路径”。`/received_global_plan` 是交给控制器的平滑
-全局路径；RPP 用 Local Costmap 预测当前追踪弧是否碰撞，行为树则在终点 `0.30 m`
+默认控制器不额外生成另一条可视化“局部路径”。`/received_global_plan` 是交给控制器的平滑
+全局路径；MPPI 用 Local Costmap 给每条候选轨迹打分避障（RPP 对照档则预测当前追踪弧
+是否碰撞），行为树则在终点 `0.30 m`
 锁存区外以 `1 Hz` 重新发布 `/plan`。动态障碍测试应把障碍放在机器人前方至少约
 `1 m` 且有绕行空间的位置：正常现象是局部图先标记障碍，随后全局路径在约 1 秒内改变；
 通道完全封死时应安全减速或停车，而不是继续撞击。
@@ -299,22 +300,28 @@ Nav2 / 键盘 / Unitree Move -> twist_mux -> velocity_smoother
                              -> collision_monitor -> /cmd_vel -> CHAMP
 ```
 
-默认 `forward_rpp` 的外层控制器是
-`nav2_rotation_shim_controller::RotationShimController`，其
-`primary_controller` 仍为 RPP。RPP 以不超过 `0.27 m/s` 跟踪路径，接近目标的最低速度为
-`0.10 m/s`；进入普通目标的 `0.30 m` XY 容差后，shim 保持 `linear.x=0`，以
-`0.45 rad/s`、最大 `1.0 rad/s²` 对齐到 `0.15 rad` yaw 容差。shim 使用限加速度开环命令，
-路径进入/退出阈值为 `1.40/0.40 rad`，前向采样 `0.50 m`，旋转碰撞预测 `1.0 s`。
-内部 RPP 的 `use_rotate_to_heading=false`：普通弯道保持前进画弧，只有接近侧后方的路径
-由外层 shim 停车对齐，避免外层 shim 与内层 RPP 重复决定原地旋转。
-`PoseProgressChecker` 将 `0.10 m` 平移或 `0.15 rad` 转向都视为进展；RPP 和 shim 的
-碰撞预测以及 Collision Monitor 均保留。
+默认 `forward_mppi` 控制器是 `nav2_mppi_controller::MPPIController`（DiffDrive
+运动模型）。它每个控制周期采样 800 条候选轨迹（40 步 × `0.10 s` 预测窗口），由
+Goal、GoalAngle、Obstacles、PathAlign/Follow/Angle 与 PreferForward 等 critic
+加权选出一条更优轨迹再交给速度链；前向限定 `vx∈[0,0.27 m/s]`、`vy=0`、
+`wz≤0.40 rad/s`。采样规模按当前 10 Hz 控制频率限制，常态关闭轨迹可视化。
+`PoseProgressChecker` 将 `0.10 m` 平移或 `0.15 rad` 转向都视为进展；MPPI 的
+ObstaclesCritic 碰撞预测以及 Collision Monitor 均保留。
 
-`closed_loop=false` 只是不把当前 1 秒滑窗 `/odom.twist.angular.z` 当作 Rotation Shim 的
-低延迟角加速度反馈；机器人是否达到目标 yaw 仍由实时 TF 与 GoalChecker 闭环判定，
-并不等于关闭导航闭环。
+需要与 RPP 对照时显式传 `controller_profile:=forward_rpp`：外层 Rotation Shim 包裹
+RPP，进入普通目标的 `0.30 m` XY 容差后保持 `linear.x=0`，以 `0.45 rad/s`、最大
+`1.0 rad/s²` 对齐到 `0.15 rad` yaw 容差；shim 使用限加速度开环命令，路径进入/退出
+阈值为 `1.40/0.40 rad`，前向采样 `0.50 m`，旋转碰撞预测 `1.0 s`。内层 RPP 以不超过
+`0.27 m/s` 跟踪路径，接近目标的最低速度为 `0.10 m/s`，`use_rotate_to_heading=false`：
+普通弯道保持前进画弧，只有接近侧后方的路径由外层 shim 停车对齐，避免外层 shim 与
+内层 RPP 重复决定原地旋转。
 
-Humble 的 Rotation Shim 会在每次 `setPlan()` 时重置内部终点位置检查器。行为树仍以
+RPP 对照档下，`closed_loop=false` 只是不把当前 1 秒滑窗 `/odom.twist.angular.z`
+当作 Rotation Shim 的低延迟角加速度反馈；机器人是否达到目标 yaw 仍由实时 TF 与
+GoalChecker 闭环判定，并不等于关闭导航闭环。
+
+Humble 的 Rotation Shim 会在每次 `setPlan()` 时重置内部终点位置检查器（RPP 档）。
+行为树仍以
 1 Hz 重规划，但 `TerminalPathLatch` 保留内部 `RateController` 的计时状态，不再在规划
 成功后把子树重置成“首次运行”。它只接受与原始目标 frame 相同、末端位置误差不超过
 `0.075 m`、末端 yaw 误差不超过 `0.01 rad` 的新路径，并且实时
@@ -325,9 +332,13 @@ Humble 的 Rotation Shim 会在每次 `setPlan()` 时重置内部终点位置检
 不会再选择附近替代终点；`use_final_approach_orientation=false` 保留 RViz 指定的末端 yaw。
 
 ```bash
-ros2 param get /controller_server FollowPath.primary_controller
-ros2 param get /controller_server FollowPath.rotate_to_goal_heading
-ros2 param get /controller_server FollowPath.closed_loop
+ros2 param get /controller_server FollowPath.plugin
+ros2 param get /controller_server FollowPath.vx_max
+ros2 param get /controller_server FollowPath.wz_max
+# forward_rpp 对照档下回读 shim：
+# ros2 param get /controller_server FollowPath.primary_controller
+# ros2 param get /controller_server FollowPath.rotate_to_goal_heading
+# ros2 param get /controller_server FollowPath.closed_loop
 ```
 
 ### 纯旋转与终点定向诊断

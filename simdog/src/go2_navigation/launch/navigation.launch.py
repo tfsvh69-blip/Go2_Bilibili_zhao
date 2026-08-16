@@ -302,8 +302,8 @@ def generate_launch_description():
             "map_session", default_value="new",
             description="在线模式：new 或包含 slam.posegraph/slam.data 的会话目录"),
         DeclareLaunchArgument(
-            "controller_profile", default_value="forward_rpp",
-            description=("控制档：forward_rpp（默认）| forward_mppi "
+            "controller_profile", default_value="forward_mppi",
+            description=("控制档：forward_mppi（默认）| forward_rpp "
                          "| omni_mppi（对照）")),
         DeclareLaunchArgument("use_sim_time", default_value="true"),
         DeclareLaunchArgument("rviz", default_value="true"),

@@ -434,10 +434,10 @@ AMCL 的粒子可以想成一群侦察员：每个侦察员猜一个位置，拿
 | Planner | 在地图上找一条可行路径 | `SmacPlanner2D` |
 | Raw Global Plan | 规划器刚算出的整条路线 | RViz 绿色 `/plan` |
 | Controller Path (Smoothed) | 实际交给控制器的路线；平滑失败时为原始路线 | RViz 蓝色 `/received_global_plan` |
-| Controller | 根据当前位姿追踪路径并输出速度 | 默认 Rotation Shim，内部 RPP |
-| Rotation Shim | 在路径初始朝向或终点朝向需要大转角时接管原地旋转 | 终点保持 `linear.x=0`，完成目标 yaw |
-| Primary Controller | Rotation Shim 内部负责普通路径跟随的控制器 | `FollowPath.primary_controller=RPP` |
-| RPP | Regulated Pure Pursuit，受约束纯追踪 | 前向优先，带碰撞预测 |
+| Controller | 根据当前位姿追踪路径并输出速度 | 默认 MPPI（DiffDrive，每周期采样 800 条候选轨迹） |
+| Rotation Shim | 在路径初始朝向或终点朝向需要大转角时接管原地旋转 | RPP 对照档使用；终点保持 `linear.x=0`，完成目标 yaw |
+| Primary Controller | Rotation Shim 内部负责普通路径跟随的控制器 | RPP 对照档 `FollowPath.primary_controller=RPP` |
+| RPP | Regulated Pure Pursuit，受约束纯追踪 | RPP 对照档；前向优先，带碰撞预测 |
 | Lookahead | 控制器在路径前方选择的追踪点/弧 | 太近易抖，太远易切弯 |
 | SmoothPath | Nav2 行为树调用的路径平滑 action | 现在已接到每次全局计划后 |
 | SimpleSmoother | 对折线点做快速平滑的 Nav2 插件 | 适合当前 SmacPlanner2D |
@@ -761,21 +761,23 @@ ros2 lifecycle get /controller_server
 | 局部代价衰减 | `/local_costmap/local_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 离开障碍后代价下降更快，路径更可能靠近膨胀圈边缘 | 代价向外延续更远，局部避障更早让开 |
 | 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
 | 全局代价衰减 | `/global_costmap/global_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 同上，影响规划器绕障的代价梯度 | 同上，障碍影响更向外延续 |
-| 正常前进目标速度 | `/controller_server` → `FollowPath.desired_linear_vel` | `0.27 m/s` | 前进更快，转弯过冲和接触模型误差风险上升 | 更稳但完成导航更慢 |
-| 原地转向速度 | `/controller_server` → `FollowPath.rotate_to_heading_angular_vel` | `0.45 rad/s` | 对齐更快，可能超过目标朝向 | 对齐更平缓，过小可能难以克服四足接触阻力 |
-| 转向加速度 | `/controller_server` → `FollowPath.max_angular_accel` | `1.0 rad/s²` | 转向启停更急 | 转向更圆滑但响应更慢 |
-| 速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.27, 0.15, 0.45]` | 放宽对应轴的最高速度限制 | 限制对应轴的最高速度 |
+| 前向速度采样上限 | `/controller_server` → `FollowPath.vx_max` | `0.27 m/s` | 前进更快，转弯过冲和接触模型误差风险上升 | 更稳但完成导航更慢 |
+| 转向速度采样上限 | `/controller_server` → `FollowPath.wz_max` | `0.40 rad/s` | 转向更快，可能超过目标朝向 | 转向更平缓，过小可能难以克服四足接触阻力 |
+| 速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.27, 0.0, 0.40]` | 放宽对应轴的最高速度限制 | 限制对应轴的最高速度 |
 
-`max_velocity` 的三个数依次是 `[x 前进 m/s, y 横移 m/s, z 角速度 rad/s]`。当前
-`forward_rpp` 是前向控制档，正常只调整 `x` 和 `z`，不要把 `y` 当作四足机器人可以横走的
-速度。`desired_linear_vel` 只是控制器希望达到的前进速度，实际速度还会被
+`max_velocity` 的三个数依次是 `[x 前进 m/s, y 横移 m/s, z 角速度 rad/s]`。当前默认
+`forward_mppi` 是前向 MPPI 档，正常只调整 `x` 和 `z`，不要把 `y` 当作四足机器人可以
+横走的速度。MPPI 的 `FollowPath.vx_max` 是采样出的前进速度上限，实际速度还会被
 `velocity_smoother.max_velocity[0]` 限制：若把前者调为 `0.35 m/s` 而上限仍是 `0.27 m/s`，
 狗仍不会超过 `0.27 m/s`。例如想把前进速度降为 `0.20 m/s`，应同时设置：
 
 ```text
-FollowPath.desired_linear_vel = 0.20
-max_velocity = [0.20, 0.15, 0.45]
+FollowPath.vx_max = 0.20
+max_velocity = [0.20, 0.0, 0.40]
 ```
+
+`forward_rpp` 对照档对应的是 `FollowPath.desired_linear_vel`（控制器希望达到的速度），
+上限同样由 `velocity_smoother.max_velocity[0]` 兜底。
 
 膨胀调参先保持控制器、传感器缓存和速度不变；先将 local/global 的
 `inflation_radius` 设为已经标定的 Footprint 外接半径约 `0.474 m`，之后每次只加 `0.10 m`，再单独试
@@ -794,17 +796,19 @@ Nav2 → twist_mux → velocity_smoother → collision_monitor → /cmd_vel → 
 
 #### 怎样保存确认过的值
 
-确认某个临时值通过观察和重复试验后，永久修改 `forward_rpp` 档应写入：
+确认某个临时值通过观察和重复试验后，永久修改默认 `forward_mppi` 档应写入：
 
 | 参数 | YAML 文件与路径 |
 |---|---|
 | 两张 costmap 的 `inflation_radius`、`cost_scaling_factor` | `simdog/src/go2_navigation/config/navigation.yaml` 中相应 local/global `inflation_layer` |
-| `desired_linear_vel`、`rotate_to_heading_angular_vel`、`max_angular_accel`、`max_velocity` | `simdog/src/go2_navigation/config/controller_forward_rpp.yaml` |
+| `vx_max`、`vx_min`、`vy_max`、`wz_max`、各 critic 权重、`max_velocity` | `simdog/src/go2_navigation/config/controller_forward_mppi.yaml` |
+| `desired_linear_vel`、`rotate_to_heading_angular_vel`、`max_angular_accel`、`max_velocity`（RPP 对照档） | `simdog/src/go2_navigation/config/controller_forward_rpp.yaml` |
 | `max_accel`、`max_decel` 等速度平滑斜率 | `simdog/src/go2_navigation/config/navigation.yaml` 的 `velocity_smoother` |
 
-修改 YAML 后重启这套导航入口才会完整应用。已纳入安全调参注册表的
-`local/global.inflation_*`、`rpp.desired_linear_vel` 和 `velocity.max_velocity`，也可通过
-`nav_tuner` 逐项设置、回读后输入 `save` 保存；`save` 会先在
+修改 YAML 后重启这套导航入口才会完整应用。`nav_tuner` 的调参注册表当前面向 RPP
+对照档，已纳入的 `local/global.inflation_*`、`rpp.desired_linear_vel` 和
+`velocity.max_velocity`，可在 `controller_profile:=forward_rpp` 下通过 `nav_tuner`
+逐项设置、回读后输入 `save` 保存；`save` 会先在
 `simdog/src/go2_navigation/logs/backups/<timestamp>/` 创建备份。`rqt_reconfigure` 本身没有
 这个保存、备份和实验记录能力。
 
