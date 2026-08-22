@@ -20,6 +20,7 @@
 
     <depend>laser_geometry</depend>
     <depend>message_filters</depend>
+    <depend>rcl_interfaces</depend>
     <depend>rclcpp</depend>
     <depend>rclcpp_components</depend>
     <depend>sensor_msgs</depend>

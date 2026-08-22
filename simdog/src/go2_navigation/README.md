@@ -49,10 +49,19 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 统一入口。`static_bundle` 是 `static_map` 的弃用别名，启动时会打印迁移提示。
 上述入口默认打开 Gazebo GUI；只有自动化或性能测试才传 `gui:=false`。
 
+第一次建图前若只想检查点云到扫描的转换，可用独立入口：
+
+```bash
+ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml
+```
+
+它启动 Gazebo、转换诊断和专用 RViz，不启动 Slam Toolbox/Nav2。完整导航已自动包含同一
+转换管线，因此两个入口不能同时运行；否则 `/scan` 会有重复发布者。
+
 在线保存：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 保存完成后可直接把输出会话目录用作固定 AMCL 地图：
@@ -60,9 +69,11 @@ bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/my_world_full_v1 rviz:=true
 ```
 
+每个保存目录包含 `map.yaml/map.pgm`、可续建的 `slam.posegraph/slam.data`，以及记录
+保存时间、扫描 frame 和实际 `min_height/max_height` 的 `session.yaml`。
 `save_online_map.sh` 还会原子更新 `$GO2_PROJECT_ROOT/go2_maps/online/latest` 软链接，因此日常固定
 AMCL 可以使用该路径；需要复现实验时应写明确的会话目录。不要混淆
 `$GO2_PROJECT_ROOT/go2_maps/online/latest` 与 LIO-SAM/NDT 流程使用的 `$GO2_PROJECT_ROOT/go2_maps/latest`。固定模式
@@ -160,8 +171,10 @@ ros2 run go2_navigation obstacle_probe --sensors scan,velodyne \
 
 工具会主动停止导航、等待 `/cmd_vel` 归零，实验后不续行旧目标。默认每个距离
 3 组×20 帧，不要在正常导航中随意加 `--no-stop-navigation`。2026-08-14 实测得到
-正前方可靠下限 0.90 m、左右 1.00 m；`gpu_ray` 在正后方 ±π 存在拼接缝。
-D435 频率与误差尚不满足正式样本门禁，不得当作已验证安全 source。完整定义、
+正前方可靠下限 0.90 m、左右 1.00 m；`gpu_ray` 在正后方 ±π 存在拼接缝。2026-08-22
+又把六处量程临时统一为 0.50 m，完成四方向、四距离各 3×10 帧：后方 0.50 m 为 0%
+检出且碰撞，右方也发生接触，因此否决 0.50 m 并恢复全链 0.90 m。D435 频率与误差
+尚不满足正式样本门禁，不得当作已验证安全 source。完整定义、
 方向/高度对照和 CSV 字段见[激光雷达近距盲区验证](docs/lidar_blind_zone_validation.md)。
 
 ## Go2 Footprint 校准
@@ -180,7 +193,8 @@ ros2 run go2_navigation footprint_calibrator \
 绿色 `Robot Footprint (Padded)` 显示 `/local_costmap/published_footprint`。完整顶点、
 余量推导、原始 CSV 和失败分支见
 [Footprint 校准报告](docs/footprint_calibration.md)。这只完成几何阶段，三个导航 profile
-仍为 `UNCALIBRATED`，Inflation 尚未进入阶段 3 标定。
+仍为 `UNCALIBRATED`。Global Inflation 已采用 `0.20 m/0.5` 现场基线，Local 保持
+`0.30 m/3.0`，但两者尚未完成阶段 3 的系统安全标定。
 
 保存或重启后可用下列命令只核对实际发布轮廓，不驱动步态：
 
@@ -196,18 +210,50 @@ ros2 run go2_navigation footprint_calibrator --verify-only
 仍会按安全约定锁停并在结束后保持锁停。验证器会等待 Polygon 与 TF 时间戳能够精确配对
 的新帧，避免把节点刚启动时 TF 缓存尚未预热误报为 footprint 失败。
 
-## 当前安全停点：幽灵障碍与近距碰撞
+## 在线 SLAM 的重力对齐扫描
 
-截至 2026-08-14，阶段 0 运行时框架、阶段 1 LiDAR 盲区量化和阶段 2 Footprint
-几何各自 PASS；阶段 3 Inflation 尚未开始。用户新观察到 Global Costmap 中的异常障碍岛
-会跳位、旧格概率性消失，且标准方块靠近后代价区消失并发生接触。因此当前整套障碍安全
-门为 **FAIL**，三个 profile 继续为 `UNCALIBRATED`，暂不进入自主移动重复验收。
+默认 `/scan` 不再直接使用随机身倾斜的 `velodyne`，而使用动态
+`velodyne_level`。该坐标系与雷达同位置、保留 yaw、把 roll/pitch 置零；上游转换器会
+先变换点云再做高度过滤。人工现场复测表明旧 `-0.05..+0.10 m` 和后续
+`+0.05..+0.20 m` 窗口仍会出现扇形白线；用户调到 `+0.20..+0.30 m` 后目视正常，
+因此正式 `/scan` 已固化为该窗口，并允许通过
+`tuning_gui:=true` 打开的 rqt 动态调整 `min_height/max_height`；调试 `/scan_raw` 固定
+保留旧窗口。`lidar_debug_raw_scan:=true` 只增加调试
+`/scan_raw`，Slam Toolbox、两张 costmap 和 Collision Monitor 仍只订阅 `/scan`。
 
-静态审计发现两个必须先处理的链路问题：`pointcloud_to_laserscan.use_inf=true`，但
-local/global LaserScan source 的 `inf_is_valid` 仍为默认 `false`，无回波的 `+inf` 不能
-形成远端 clearing ray；现有 Collision Monitor 的 stop/decel 前缘为基座前
-`0.52/0.72 m`，却都位于已实测 LiDAR 最近可靠表面约基座前 `1.10 m` 的盲区内。
-此外当前 `inflation_radius=0.30 m` 尚未按外扩 Footprint 外接半径 `0.474 m` 标定。
+异步 Slam Toolbox 显式使用 `scan_queue_size: 1`。Humble ObstacleLayer 的 TF 等待使用
+costmap 顶层 `transform_tolerance`，本项目按重载实测由默认 `0.3 s` 设为 `0.5 s`；这只
+等待下一条 TF，不增加 `observation_persistence`。最终 135 秒运行中两张 costmap 合计
+记录 2 次 `MessageFilter OutTheBack`，含义是旧观测被跳过，不是发布错误端点；该时序
+残余仍保留在记录中。
+
+先前正反转、闭合四转弯和前后移动采样达到 `5.15°` 倾斜：旧投影地面端点 4430 个、
+重力对齐 0 个；240 帧点云 TF 全成功，`map -> odom` 最大单步
+`0.0224 m/0.00698 rad`，`/scan=8.89 Hz`。这些数据只证明该批样本的地面/TF/频率门；
+后续人工在线 SLAM 曾复现幽灵图；`0.20..0.30 m` 现场目视已正常，但完整路线建图、保存
+和固定图导航仍待验收。1800 水平列对照只有
+`5.06 Hz`，默认 900 列恢复性能；旧版 900 列也曾出现幽灵图，因此它不是几何修复。
+完整操作和
+RViz 实图见 [go2_lidar_scan README](../go2_lidar_scan/README.md)。
+
+## 当前安全停点：高度窗现场有效，完整导航与近距防撞仍待验收
+
+截至 2026-08-22，`go2_lidar_scan` 已恢复 `+inf` 空射线，并将 local/global source
+成组设为 `inf_is_valid=true`、`obstacle_max_range=14.0 m`、
+`raytrace_max_range=15.0 m`。最终 2 m 方块的 scan/Velodyne 各 3×30 帧检出率为
+100%；实际删除后精确区域 lethal 格 `64→57`，删除前背景为 55，空射线 clearing
+PASS。它证明清除语义没有断，但不证明运动时不会产生新错误端点。用户已确认
+`0.20..0.30 m` 窗口下目视正常；正式验收必须从 `map_session:=new` 开始完成完整覆盖、
+保存和固定 AMCL 导航，不能让旧 pose graph 污染结果。
+
+系统级障碍安全门仍为 **FAIL**：Collision Monitor 的 stop/decel 前缘为基座前
+`0.52/0.72 m`，都位于已实测 LiDAR 最近可靠表面约基座前 `1.10 m` 的盲区内；
+Global Costmap 当前按用户现场值使用 `inflation_radius=0.20 m`、
+`cost_scaling_factor=0.5`；Local Costmap 仍保持 `0.30 m/3.0`。较小全局半径会缩小
+远处错误端点周围的代价岛，较低衰减因子会让这 0.20 m 窄带内的代价下降更慢；它不删除
+错误 `/scan` 端点，也不等于按外扩 Footprint 外接半径 `0.474 m` 完成安全标定。阶段 3
+Inflation、Depth、近距保护和九类重复碰撞验收均未完成，三个 profile 继续为
+`UNCALIBRATED`。本次结果只能说明转换与 clearing 链路已闭环，不能说明靠近障碍不会碰撞。
 
 发现异常时先安全停车：
 
@@ -215,11 +261,8 @@ local/global LaserScan source 的 `inf_is_valid` 仍为默认 `false`，无回�
 ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
 ```
 
-下一步不是同时放大 Persistence/Inflation，而是固定 `static_map + AMCL`，依次区分
-Static Map、`map→odom` 和 ObstacleLayer；再验证 `inf_is_valid` 与 mark/raytrace 上限组成
-的 LaserScan 空射线语义组。当前三个上限都为 `15.0 m`，不能孤立开启 valid-inf，否则
-无回波替换端点可能在最远处被重新 marking。该组 PASS 后才进入 Inflation、Persistence、
-Depth 与 Collision Monitor 标定。完整证据、命令和 PASS 门见
+下一步属于独立的近距安全阶段：依次进入 Inflation、Persistence、Depth 与 Collision
+Monitor 标定；不得同时放大 Persistence/Inflation 来掩盖新问题。完整证据、命令和 PASS 门见
 [全局代价图幽灵障碍与近距碰撞调查](docs/costmap_ghost_obstacle_investigation.md)。
 
 ## RViz 操作
@@ -276,9 +319,12 @@ ros2 topic hz /local_costmap/costmap_updates
 
 ## 感知、TF 与控制链
 
-VLP-16 水平切片由 `pointcloud_to_laserscan` 统一生成 `/scan`。AMCL、Slam Toolbox、
+VLP-16 水平切片由 `go2_lidar_scan` 调用上游 `pointcloud_to_laserscan` 统一生成
+`/scan`。AMCL、Slam Toolbox、
 全局障碍层、局部障碍层和 Collision Monitor 都复用这条 LaserScan；局部代价图和碰撞监控
-还订阅实际 D435 话题 `/depth/color/points`，并按高度过滤地面和机身点。
+可选订阅实际 D435 话题 `/depth/color/points`，并按高度过滤地面和机身点。统一 Gazebo
+导航入口默认 `use_d435_navigation:=false`，此时不实例化相机 Gazebo 插件且 Collision
+Monitor 只使用 scan；普通 Gazebo 入口仍启用 D435，显式传 `true` 才进行联合感知 A/B。
 
 TF 所有权必须唯一：
 
@@ -437,10 +483,11 @@ ros2 run go2_navigation health_check --mode static_map --localization amcl \
 ```
 
 预期 `/scan` 持续发布，`/pause_navigation` 为 `false`，TF 主链完整，公开与内部 action
-各只有一个 server。Gazebo 高负载时传感器可能低于 xacro 标称 10 Hz；本机无界面实测约
-6–7 Hz，因此传感器过期联调值记录为 2 秒，后续应在场景压力测试后逐步收紧。导航档将
-`pointcloud_to_laserscan.always_subscribe` 设为 `true`，避免临时 `/scan` 订阅者退出时
-lazy 订阅竞态让转换节点停止处理 `/velodyne_points`；该参数在组件中默认仍为 `false`。
+各只有一个 server。Gazebo 高负载时传感器可能低于 xacro 标称 10 Hz；最终 900 水平列、
+LiDAR-only 导航档的完整运动为 8.89 Hz，独立 RViz A/B 约 9.15 Hz，已高于 7 Hz 门。
+传感器过期联调值仍记录为 2 秒，待更长场景压力测试后逐步收紧。`go2_lidar_scan` 将上游
+`always_subscribe` 设为 `true`，避免临时 `/scan`
+订阅者退出时的 lazy 订阅竞态让转换节点停止处理 `/velodyne_points`。
 
 ## 上游依据、许可证与取舍
 
@@ -450,7 +497,8 @@ lazy 订阅竞态让转换节点停止处理 `/velodyne_points`；该参数在�
   [Rotation Shim 官方说明](https://docs.nav2.org/configuration/packages/configuring-rotation-shim-controller.html)
   与 [Humble RPP 源码](https://github.com/ros-navigation/navigation2/blob/humble/nav2_regulated_pure_pursuit_controller/src/regulated_pure_pursuit_controller.cpp)。
 - [Slam Toolbox](https://github.com/SteveMacenski/slam_toolbox) 为 LGPL-2.1，
-  `pointcloud_to_laserscan` 为 BSD；在线模式复用其标准节点、RViz 插件和 pose graph。
+  `pointcloud_to_laserscan` 为 BSD-3-Clause；在线模式通过 `go2_lidar_scan` 复用其标准
+  投影节点，并复用 Slam Toolbox 的标准 RViz 插件和 pose graph。
 - `lidar_localization_ros2` 为 BSD-2-Clause；实验档关闭其直接 TF 输出，以
   `robot_localization`（BSD-3-Clause）的 `two_d_mode` 平滑发布全局二维 TF。
 - Go2 社区方案多数是通用导航栈的适配：`go2_robot` 导航仍在开发，

@@ -42,6 +42,7 @@
   <!-- 控制链 -->
   <exec_depend>twist_mux</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>go2_lidar_scan</exec_depend>
   <exec_depend>pointcloud_to_laserscan</exec_depend>
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>gazebo_plugins</exec_depend>

@@ -38,7 +38,7 @@ def _build_actions(context):
         session_text = "续建 %s" % session_dir
 
     return [
-        LogInfo(msg="Go2 在线 SLAM：%s，/scan 由 Velodyne 水平切片生成"
+        LogInfo(msg="Go2 在线 SLAM：%s，/scan 由重力对齐的 Velodyne 水平切片生成"
                 % session_text),
         Node(
             package="slam_toolbox",

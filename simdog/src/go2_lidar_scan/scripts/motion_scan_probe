@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""安装态 motion_scan_probe 入口。"""
+
+from go2_lidar_scan.motion_scan_probe import main
+
+
+if __name__ == "__main__":
+    main()

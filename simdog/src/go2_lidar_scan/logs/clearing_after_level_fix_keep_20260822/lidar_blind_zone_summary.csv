@@ -1,0 +1,2 @@
+run_id,sensor,distance_m,group,frames,detections,detection_rate,measured_p50_m,abs_error_p50_m,abs_error_p95_m,period_p50_s,period_p95_s,period_p99_s,tf_success_rate,contact_events,pass
+blind_zone_20260822_080308,scan,1.9999454191518433,1,10,10,1.0,1.9995693063135387,0.0006298412417770072,0.003197618417842861,0.19661350099977426,0.5197400856000968,0.5349529691198041,1.0,0,True

@@ -111,6 +111,22 @@ def test_unified_navigation_defaults_to_online_slam_amcl_and_forward_mppi():
     assert arguments["localization"] == "amcl"
     assert arguments["gui"] == "true"
     assert arguments["tuning_gui"] == "false"
+    assert arguments["lidar_debug_raw_scan"] == "false"
+
+
+def test_global_inflation_uses_field_baseline_without_changing_local_layer():
+    navigation = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / "navigation.yaml").read_text(
+            encoding="utf-8"))
+    global_inflation = navigation["global_costmap"]["global_costmap"][
+        "ros__parameters"]["inflation_layer"]
+    local_inflation = navigation["local_costmap"]["local_costmap"][
+        "ros__parameters"]["inflation_layer"]
+
+    assert global_inflation["inflation_radius"] == 0.20
+    assert global_inflation["cost_scaling_factor"] == 0.5
+    assert local_inflation["inflation_radius"] == 0.30
+    assert local_inflation["cost_scaling_factor"] == 3.0
 
 
 def test_old_online_entry_is_compatibility_wrapper():
@@ -137,13 +153,11 @@ def test_all_navigation_and_mapping_entries_show_gazebo_by_default():
 
 
 def test_online_map_config_has_frequent_updates_and_single_slam_tf_owner():
-    scan = _parameters("online_mapping.yaml", "pointcloud_to_laserscan")
-    assert scan["always_subscribe"] is True
-    assert scan["target_frame"] == ""
     slam = _parameters("online_mapping.yaml", "slam_toolbox")
     assert slam["mode"] == "mapping"
     assert slam["map_update_interval"] == 1.0
     assert slam["minimum_travel_distance"] == 0.10
+    assert slam["scan_queue_size"] == 1
     assert slam["transform_publish_period"] > 0.0
 
 
@@ -178,6 +192,9 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
         "ros__parameters"]
     global_scan = global_costmap["obstacle_layer"]["scan"]
     assert global_scan["max_obstacle_height"] == 2.0
+    assert global_scan["inf_is_valid"] is True
+    assert global_scan["obstacle_max_range"] == 14.0
+    assert global_scan["raytrace_max_range"] == 15.0
     assert global_scan["marking"] is True
     assert global_scan["clearing"] is True
     local = document["local_costmap"]["local_costmap"]["ros__parameters"]
@@ -195,6 +212,9 @@ def test_navigation_uses_planar_frames_scan_sources_and_correct_depth_topic():
     assert local["robot_base_frame"] == "base_footprint"
     assert local["scan_layer"]["scan"]["data_type"] == "LaserScan"
     assert local["scan_layer"]["scan"]["max_obstacle_height"] == 2.0
+    assert local["scan_layer"]["scan"]["inf_is_valid"] is True
+    assert local["scan_layer"]["scan"]["obstacle_max_range"] == 14.0
+    assert local["scan_layer"]["scan"]["raytrace_max_range"] == 15.0
     assert local["scan_layer"]["scan"]["marking"] is True
     assert local["scan_layer"]["scan"]["clearing"] is True
     assert local["d435_layer"]["d435"]["topic"] == "/depth/color/points"
@@ -234,6 +254,8 @@ def test_navigation_launch_reuses_standard_bt_navigator_and_disables_respawn():
     assert '{"bond_timeout": 10.0}' in text
     assert '"forward_mppi": "controller_forward_mppi.yaml"' in text
     assert 'LaunchConfiguration("tuning_gui")' in text
+    assert 'LaunchConfiguration("lidar_debug_raw_scan")' in text
+    assert '"lidar_debug_raw_scan": str(lidar_debug_raw_scan).lower()' in text
     assert 'rqt_reconfigure.param_plugin.ParamPlugin' in text
 
 

@@ -62,10 +62,10 @@ bash scripts/build_workspaces.sh            # 全量构建（含 GPU 后端，�
 # 或增量构建受影响包：
 #   source /opt/ros/humble/setup.bash
 #   cd simdog && colcon build --symlink-install --packages-select \
-#     go2_navigation lidar_localization_ros2 ndt_omp_ros2 ndt_relocalization
+#     go2_lidar_scan go2_navigation go2_description
 ```
 
-**通过标准**：colcon 全部 Finished，无 failed；`cd simdog && colcon list | wc -l` 输出 `24`；`cmp -s AGENTS.md CLAUDE.md && echo OK` 输出 OK。
+**通过标准**：colcon 全部 Finished，无 failed；`cd simdog && colcon list | wc -l` 输出 `25`；`cmp -s AGENTS.md CLAUDE.md && echo OK` 输出 OK。
 
 ### 2. 环境加载（每个终端都要）
 
@@ -125,7 +125,34 @@ ros2 run go2_navigation build_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/la
 
 ## 2 · 传感器与底层链路
 
-启动完整四足 Gazebo，确认传感器、控制器、机器人本体都正常。
+先用新包独立验证三维点云转换，不加载 SLAM/Nav2：
+
+```bash
+# 终端 1 —— Gazebo + /scan 转换诊断 + 专用 RViz
+source scripts/setup_simdog.bash
+GO2_D435_GAZEBO_ENABLED=0 \
+ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
+  lidar_debug_raw_scan:=true
+
+# 终端 2 —— 只读检查
+source scripts/setup_simdog.bash
+ros2 topic hz /velodyne_points
+ros2 topic hz /scan
+ros2 topic echo /diagnostics --once
+ros2 param get /go2_lidar_scan_converter use_inf       # 期望 True
+ros2 param get /go2_lidar_scan_converter range_min     # 期望 0.9
+```
+
+RViz 左侧保持 `Velodyne 3D Points`、橙色 `Leveled Navigation Scan`、洋红色
+`Raw Tilting Scan` 与 `Scan Health` 打开。正常时橙色二维点落在三维点云的水平墙体上，
+洋红点只作为旧倾斜切片 A/B，不得接入下游；静止墙线不复制、不整体漂移。雷达上方文字为绿色
+“转换链正常”。橙色表示低频或静止跳变，红色表示点云/扫描超时；先停止运动，再根据
+`/diagnostics` 的 `cloud_hz`、`scan_hz`、`invalid_bins` 和 `frame_jump_ratio` 排查。
+
+独立入口与完整导航都会发布 `/scan`。检查完必须在终端 1 按 `Ctrl+C`，再进行后续
+Gazebo/SLAM 测试，不能让两套入口同时运行。
+
+若还要分组件确认控制器和机器人本体，再启动完整四足 Gazebo：
 
 ```bash
 # 终端 1 —— Gazebo（无界面；本节只测传感器，暂不启动 bridge）
@@ -148,11 +175,12 @@ ros2 topic echo --once /odom/ground_truth --field pose.pose.position
 
 | 检查项 | 话题 / 命令 | 通过标准 |
 |---|---|---|
-| Velodyne 点云 | `/velodyne_points` | ≈10 Hz |
+| Velodyne 点云 | `/velodyne_points` | 独立入口通常 7–10 Hz；低于 7 Hz 记为性能 FAIL |
+| 二维扫描 | `/scan` | 独立入口应 ≥7 Hz，`frame_id=velodyne_level`，空方向允许 `+inf` |
 | IMU | `/imu/data` | ≈200 Hz |
 | 里程计 | `/odom` | 有数据 |
 | 关节状态 | `/joint_states` | 有数据 |
-| D435 深度点云（可选） | `/d435/depth/color/points` | ≈5 Hz（受 Gazebo 负载）；无数据不阻断本阶段导航验收 |
+| D435 深度点云（可选） | `/d435/depth/color/points` | 普通 Gazebo 入口默认 10 Hz 标称；LiDAR-only 导航档无话题是预期 |
 | 控制器 | `ros2 control list_controllers` | joint_group_effort / joint_states 均 active |
 | 机身姿态 | `/odom/ground_truth` | z≈0.21，roll/pitch≈0 |
 
@@ -391,10 +419,21 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 固定地图导航，确保没有 NDT、`map_server` 或另一个 `map -> odom` 发布者。
 
 ```bash
+# 终端 1 —— 完整在线建图导航；它已经自动启动 go2_lidar_scan
 cd /home/hao/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
-ros2 launch go2_navigation simulation_online_mapping_navigation.launch.xml \
-    map_session:=new controller_profile:=forward_mppi gui:=true rviz:=true
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=online_slam \
+    map_session:=new controller_profile:=forward_mppi gui:=true rviz:=true \
+    lidar_debug_raw_scan:=false use_d435_navigation:=false tuning_gui:=false
+```
+
+正式建图前回读 `min_height=0.2`、`max_height=0.3`；`tuning_gui:=false` 是为了避免建图时
+误触当前现场有效值。只有重新做单变量 A/B 时才打开 rqt。
+
+```bash
+ros2 param get /go2_lidar_scan_converter min_height
+ros2 param get /go2_lidar_scan_converter max_height
 ```
 
 ### RViz 里具体看什么
@@ -403,35 +442,80 @@ ros2 launch go2_navigation simulation_online_mapping_navigation.launch.xml \
 2. `Live SLAM Map` 默认勾选；白色是已观测自由区，黑色是已观测障碍，
    灰色或空白是 unknown。它与固定模式的 `Static Map` 不是同一数据源。
 3. `SLAM Scan` 应在机器人周围显示橙色扫描点。若扫描点在墙上但地图不更新，
-   检查 `/scan` 频率与 `map -> odom`；若扫描点本身错乱，先调点云高度切片。
+   检查 `/scan` 频率与 `map -> odom`；若扫描点本身错乱，先退出完整导航并使用第 2 节
+   专用 RViz 排查。当前可在 rqt 只调 `min_height/max_height`；每个候选正式比较时都要
+   重启空白 `map_session:=new`，避免旧白线污染结果。
 4. 点击 `Nav2 Goal`，只点当前白色自由区靠近 unknown 的边缘。机器人到达后会
    看到更远区域，`Live SLAM Map` 的已知栅格才会增加。
 5. `Global Costmap` 是 Nav2 对当前 `/map` 加障碍与膨胀的结果；`Local Costmap`
    是跟随机器人滚动的 5×5 m 窗口。它们会动态变化，但不是保存地图。
+6. `LiDAR Scan Health` 显示雷达上方中文 Marker：绿是转换链正常，橙是低频/静止跳变，
+   红是点云或 `/scan` 超时。橙/红时先按键盘 `k`，再调用 `/navigation/stop`。
 
 ```bash
-ros2 topic hz /scan                         # 应稳定有数据
-ros2 topic echo --once /map --field info    # 记录 width/height/origin
-ros2 run tf2_ros tf2_echo map odom          # 唯一来自 slam_toolbox
+# 终端 2 —— 只读运动探针，不会发布任何速度
+cd /home/hao/ROS/Go2_Bilibili_zhao-main
+source scripts/setup_unitree_sim.bash
+ros2 run go2_lidar_scan motion_scan_probe --duration 150
+```
+
+```bash
+# 终端 3 —— 键盘控制，必须走 /cmd_vel_teleop 安全入口
+cd /home/hao/ROS/Go2_Bilibili_zhao-main
+source scripts/setup_unitree_sim.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+    --ros-args -r cmd_vel:=/cmd_vel_teleop
+# i 前进、, 后退、j/l 左右转、k 停止；不要直接发布 /cmd_vel。
+```
+
+```bash
+# 探针结束后逐条补充检查；ros2 topic hz 需按 Ctrl+C 才会进入下一条
+ros2 topic hz /scan
+ros2 topic echo --once /map --field info
 ros2 run go2_navigation health_check --mode online_slam
 
 # 结束前同时保存可视化地图和可续建 pose graph
-bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
+
+驾驶顺序应为外墙一圈、内部平行往返、主要障碍一圈、回到起点闭环；每段按 `k` 停止，
+闭环后静止 5–10 秒再保存。保存成功后目录还应包含记录本次 `0.20..0.30 m` 的
+`session.yaml`。退出在线栈后，用同一明确目录启动固定图导航：
+
+```bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+  navigation_mode:=static_map localization:=amcl \
+  map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/my_world_full_v1 \
+  controller_profile:=forward_mppi gui:=true rviz:=true
+```
+
+RViz 先用 `2D Pose Estimate` 标定出生位置和朝向，再按“1–2 m 短目标、90° 转弯、长走廊、
+回到起点”顺序点击 `Nav2 Goal`。只点白色自由区；异常先 `Cancel` 或
+`/navigation/stop`。
 
 下次续建：
 
 ```bash
-ros2 launch go2_navigation simulation_online_mapping_navigation.launch.xml \
-    map_session:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room gui:=true rviz:=true
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+    navigation_mode:=online_slam \
+    map_session:=$GO2_PROJECT_ROOT/go2_maps/online/my_world_full_v1 gui:=true rviz:=true
 ```
 
 ✅ **通过标准**：机器人移到观测边缘后已知栅格数或地图边界增加；保存目录同时
-包含 `map.pgm`/`map.yaml` 与 `slam.posegraph`/`slam.data`；续建后旧区域仍在。
+包含 `map.pgm`/`map.yaml`、`slam.posegraph`/`slam.data` 和 `session.yaml`；续建后旧区域仍在。
 
-2026-08-11 实测在线目标成功，`/cmd_vel_nav.linear.x` 峰值约 `0.27 m/s`、
-`linear.y=0`；地图从 `198×209` 扩展到 `230×209`，四个会话文件均已保存并完成
-续建加载验证。
+2026-08-22 历史样本用 `/cmd_vel_teleop` 完成正反整圈、四次转弯闭合路线和前后移动，退出前
+发布零速度。运动探针采样 240 帧，最大机身倾斜 `5.15°`：旧投影有 4430 个地面获胜
+端点、对齐投影为 0；同时间戳 TF 成功率 100%，`/scan=8.89 Hz`，`map→odom` 最大
+单步 `0.0224 m/0.00698 rad`，该次探针判定 PASS。后续人工在线 SLAM 曾复现白色扇形线；
+用户把高度窗调到 `0.20..0.30 m` 后目视正常，该值已固化，下一步是完整覆盖建图、保存
+和固定 AMCL 导航。1800 水平列
+对照为 5.06 Hz，900 列只恢复性能。
+
+同次运行两张 costmap 合计仍出现 2 次 `OutTheBack` 旧观测丢弃。它表示该帧没进入代价
+图，不会生成幽灵端点；若频繁出现仍要记录为时序问题。RViz 出现红项、机器人不动或
+扫描停止时，先按 `k`/空格并调用 `/navigation/stop`，确认 `/cmd_vel` 归零后再看
+`/diagnostics`、`ros2 topic hz /scan` 和 TF，不能边运动边重启传感器。
 
 ---
 

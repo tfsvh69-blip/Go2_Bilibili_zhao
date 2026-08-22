@@ -2,8 +2,8 @@
 
 `simdog` 是本项目的主 ROS 2 Humble 工作空间，包含 CHAMP 四足步态、Go2
 Gazebo 模型、Velodyne、RealSense、LIO-SAM 和 NDT 重定位。
-当前 `colcon list` 共识别 21 个包，其中包含固定的 Unitree ROS 2 v0.3.0
-接口包与 Sport API 仿真兼容桥。
+当前 `colcon list` 共识别 25 个包，其中包含新的 `go2_lidar_scan`、固定的 Unitree
+ROS 2 v0.3.0 接口包与 Sport API 仿真兼容桥。
 
 ## 配置与构建
 
@@ -18,7 +18,7 @@ source scripts/setup_simdog.bash
 ```
 
 运行 Unitree 接口仿真时改用 `source scripts/setup_unitree_sim.bash`；它会继续
-加载本工作空间，并设置 CycloneDDS、`lo` 和默认 Domain 1。
+加载本工作空间，并设置 CycloneDDS、`lo` 和默认 Domain 0。
 
 环境加载脚本默认设置 CUDA 设备 0，并在双显卡环境优先使用 NVIDIA OpenGL。
 如需确认整个 CUDA NDT 链路，执行：
@@ -28,6 +28,26 @@ bash scripts/verify_gpu_runtime.sh
 ```
 
 ## 启动
+
+开始采集地图前，建议先独立核对 VLP-16 点云到 `/scan` 的转换：
+
+```bash
+GO2_D435_GAZEBO_ENABLED=0 \
+ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
+  lidar_debug_raw_scan:=true tuning_gui:=true
+```
+
+它会启动 Gazebo、转换诊断和专用 RViz。确认 `Velodyne 3D Points`、橙色
+`Leveled Navigation Scan` 与洋红色 `Raw Tilting Scan` 的墙体端点对应，雷达上方
+`Scan Health` 为绿色后按 `Ctrl+C` 退出；完整
+在线导航已经包含同一转换管线，两套入口不能同时运行。
+历史运动样本在机身倾斜 `5.15°` 时旧投影产生 4430 个地面获胜端点，对齐扫描为 0，
+`/scan=8.89 Hz`、同时间戳 TF 成功率 100%。900 水平列用于满足 Gazebo 实时率。人工曾在
+较低高度窗复现扇形白线；用户现场确认 `+0.20..+0.30 m` 下 SLAM 目视正常，该值已固化
+并继续支持 rqt 动态调节。完整覆盖建图、保存和固定图导航仍待验收；旧
+`-0.05..+0.10 m` 由 `/scan_raw`
+保留作对照。0.50 m 候选在后/右方向发生接触，默认量程
+已恢复为全链一致的 0.90 m；详细数据见 [`go2_lidar_scan`](src/go2_lidar_scan/README.md)。
 
 完整操作分为“首次建图”和“已有地图重定位”两种模式，不能让 LIO-SAM 与 NDT 同时
 发布 `map -> odom`。详细的逐终端命令、地图保存、`/initialpose` 和故障排查见

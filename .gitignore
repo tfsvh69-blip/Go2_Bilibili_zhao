@@ -23,6 +23,7 @@ __pycache__/
 # 未完成的参考资料下载
 /文档/*.downloading
 
-# 项目数据目录（地图 / rosbag），不纳入版本控制，保留本地
-/go2_maps/
+# 项目数据目录（地图 / rosbag）不纳入版本控制；只保留目录说明。
+/go2_maps/*
+!/go2_maps/README.md
 /go2_bags/

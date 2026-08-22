@@ -62,14 +62,16 @@ COMMON_CRITICAL_NODE_NAMES = [
     "go2_goal_guard",
     "go2_navigation_safety_supervisor",
     "twist_mux",
-    "pointcloud_to_laserscan",
+    "go2_lidar_level_frame",
+    "go2_lidar_scan_converter",
 ]
 ACTION_SERVERS = {
     "/navigate_to_pose": "go2_goal_guard",
     "/navigate_to_pose_raw": "bt_navigator",
 }
 TF_CHAIN = [("map", "odom"), ("odom", "base_footprint"),
-            ("base_footprint", "base_link")]
+            ("base_footprint", "base_link"),
+            ("base_footprint", "velodyne_level")]
 
 
 class HealthCheck(Node):

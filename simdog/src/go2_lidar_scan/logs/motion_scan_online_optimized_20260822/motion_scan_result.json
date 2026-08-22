@@ -1,0 +1,26 @@
+{
+  "status": "FAIL",
+  "read_only": true,
+  "sampled_cloud_frames": 92,
+  "cloud_tf_failures": 1,
+  "maximum_body_tilt_deg": 5.3425170231584875,
+  "raw_ground_frames": 33,
+  "raw_ground_bins_total": 2812,
+  "level_ground_frames": 0,
+  "level_ground_bins_total": 0,
+  "level_finite_bins_median": 541.0,
+  "scan_hz": 6.657113523667128,
+  "raw_scan_hz": 0.0,
+  "scan_frame_mismatches": 0,
+  "scan_tf_success_rate": 1.0,
+  "level_frame_max_tilt_deg": 0.0,
+  "map_odom_samples": 1800,
+  "map_odom_max_xy_step_m": 0.0502937954802643,
+  "map_odom_max_yaw_step_rad": 0.3664500000000006,
+  "failures": [
+    "/scan 频率 6.66 Hz 低于 7.00 Hz",
+    "map→odom 最大单步修正超过 0.10 m/rad"
+  ],
+  "warnings": [],
+  "incomplete_reasons": []
+}

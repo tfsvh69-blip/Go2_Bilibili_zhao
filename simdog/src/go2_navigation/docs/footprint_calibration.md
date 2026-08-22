@@ -25,8 +25,9 @@
 
 后续现场发现 Global Costmap 幽灵障碍与近距方块碰撞，使系统级安全门改判为 FAIL；
 这不推翻本阶段的几何 PASS。当前外扩 Footprint 外接半径 `0.474170 m` 仍是阶段 3
-Inflation 的几何起点，但必须先修复 ObstacleLayer clearing、排除 `map→odom` 跳变，
-否则 Inflation 只会把错误障碍格一起放大。后续顺序见
+Inflation 的安全比较基准；V1.5.0 的 Global/Local 现场值分别为 `0.20/0.30 m`，均不应
+被误写成已经满足该几何基准。ObstacleLayer clearing 和 `map→odom` 必须独立检查，
+否则 Inflation 只会改变错误障碍格的可见大小。后续顺序见
 [幽灵障碍与近距碰撞调查](costmap_ghost_obstacle_investigation.md)。
 
 ## 几何来源与算法

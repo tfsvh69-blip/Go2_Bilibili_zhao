@@ -14,7 +14,9 @@
         <update_rate>50.0</update_rate>
         <xyz_offset>0 0 0</xyz_offset>
         <rpy_offset>0 0 0</rpy_offset>
-        <gaussian_noise>0.01</gaussian_noise>
+        <!-- 本话题名和导航适配器都把它作为 ground_truth；人为叠加 1 cm
+             独立位置噪声会让 Slam Toolbox 持续修正 map->odom，不属于物理真值。 -->
+        <gaussian_noise>0.0</gaussian_noise>
     </plugin>
     </gazebo>
 

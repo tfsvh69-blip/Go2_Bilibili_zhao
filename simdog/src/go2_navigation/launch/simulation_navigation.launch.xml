@@ -10,10 +10,16 @@
   <arg name="rviz" default="true"/>
   <arg name="tuning_gui" default="false"/>
   <arg name="use_sim_time" default="true"/>
+  <arg name="lidar_debug_raw_scan" default="false"/>
+  <arg name="use_d435_navigation" default="false"/>
   <arg name="minimum_goal_clearance_m" default="0.10"/>
 
   <!-- 隔离 Gazebo 子启动文件的同名 rviz 参数，避免覆盖导航 RViz 开关。 -->
   <group scoped="true">
+    <!-- LiDAR 根因验收默认不创建 Gazebo D435 渲染与插件，避免
+         RealSense 回调抢占 gpu_ray 而使 /scan 产生长间断。需要近场相机
+         A/B 时显式传 use_d435_navigation:=true；普通 gazebo_velodyne 仍保留 D435。 -->
+    <set_env name="GO2_D435_GAZEBO_ENABLED" value="$(var use_d435_navigation)"/>
     <include file="$(find-pkg-share go2_config)/launch/gazebo_velodyne.launch.py">
       <arg name="gui" value="$(var gui)"/>
       <arg name="rviz" value="false"/>
@@ -39,6 +45,8 @@
     <arg name="rviz" value="$(var rviz)"/>
     <arg name="tuning_gui" value="$(var tuning_gui)"/>
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="lidar_debug_raw_scan" value="$(var lidar_debug_raw_scan)"/>
+    <arg name="use_d435_navigation" value="$(var use_d435_navigation)"/>
     <arg name="minimum_goal_clearance_m" value="$(var minimum_goal_clearance_m)"/>
   </include>
 </launch>

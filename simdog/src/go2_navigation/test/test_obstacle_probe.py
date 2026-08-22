@@ -101,6 +101,14 @@ def test_group_summary_requires_rate_error_and_tf_pass():
     assert summary["pass"]
 
 
+def test_group_summary_rejects_physical_contact_even_when_detection_is_good():
+    observations = [_frame(True, index * 0.2) for index in range(20)]
+    summary = summarize_group("scan", 0.5, 1, observations, 0.95, 0.05, 1)
+    assert summary["detection_rate"] == pytest.approx(1.0)
+    assert summary["contact_events"] == 1
+    assert not summary["pass"]
+
+
 def test_reliable_distance_requires_every_repeat_group_to_pass():
     summaries = []
     for distance, states in ((1.0, (True, True, True)), (0.9, (True, False, True))):

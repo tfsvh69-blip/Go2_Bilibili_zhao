@@ -40,6 +40,7 @@ GPU NDT 架构：sm_89
 ├── simdog/                         # 唯一 ROS 2 colcon 工作空间
 │   ├── src/
 │   │   ├── go2_behaviors/          # 打招呼、点头、伸展等仿真动作
+│   │   ├── go2_lidar_scan/          # VLP-16 点云转 /scan、诊断与独立 RViz
 │   │   ├── go2_navigation/         # 自主导航包（同源地图包、Nav2、安全链）
 │   │   ├── lidar_localization_ros2/ # NDT/GICP 实验定位库
 │   │   ├── go2_unitree_sim_bridge/ # Unitree Sport API 仿真兼容桥
@@ -467,8 +468,10 @@ navigation 模式会等待新目标和双终点 XY 容差，进入后最多采�
 已撤回。现阶段仍应校准 CHAMP 原地旋转步态和接触模型，不能继续用 Nav2 容差或控制器
 参数补偿。
 
-`tuning_gui:=true` 会同时打开标准 `rqt_reconfigure` 窗口。只建议在
-`/controller_server` 中逐项调整 `desired_linear_vel`、lookahead、
+`tuning_gui:=true` 会同时打开标准 `rqt_reconfigure` 窗口，并直接定位到
+`/go2_lidar_scan_converter`。当前只有 `min_height`、`max_height` 是经代码保证真正
+在线生效的雷达投影参数；其他投影参数会拒绝热修改并提示重启。需要调控制器时再在树中
+选择 `/controller_server`，逐项调整 `desired_linear_vel`、lookahead、
 `rotate_to_heading_*`、`max_angular_accel`、`min_approach_linear_velocity` 与目标容差。
 运行时修改不会写回 YAML，重启即恢复安全基线；不得用该窗口关闭
 Collision Monitor、RPP 碰撞预测或安全监督。
@@ -485,16 +488,48 @@ Collision Monitor、RPP 碰撞预测或安全监督。
 CHAMP 四足步态和 Gazebo 物理实际运动；该真值反馈只用于仿真控制闭环，真机不适用。
 
 固定地图的 `/map` 由 `map_server` 从 PGM 读取，本来就不会随机器人移动扩展。
-在线模式使用 `pointcloud_to_laserscan + slam_toolbox`，RViz 中的 `Live SLAM Map`
-会随观测扩大。导航配置令 `pointcloud_to_laserscan.always_subscribe=true`，保证
-Collision Monitor 等订阅者短暂重连后 `/scan` 仍持续输出；该选项默认关闭，不改变组件
-在其他场景中的 lazy 订阅行为。结束时使用：
+在线模式使用 `go2_lidar_scan + slam_toolbox`，RViz 中的 `Live SLAM Map`
+会随观测扩大。`go2_lidar_scan` 复用上游 `pointcloud_to_laserscan`，集中维护
+`/velodyne_points -> /scan` 的重力对齐、中文诊断 Marker 与 Nav2 clearing 契约；
+`always_subscribe=true` 保证 Collision Monitor 等订阅者短暂重连后 `/scan` 仍持续输出。
+运动时会按每帧点云时间戳生成 `base_footprint -> velodyne_level`：保留雷达平移和 yaw，
+去掉四足步态造成的 roll/pitch；`/scan.frame_id` 因此固定为 `velodyne_level`。TF 缺失时
+该帧不输出，不会拿旧姿态拼新扫描。正常导航只启动一个 `/scan` 发布者；只有显式传
+`lidar_debug_raw_scan:=true` 才增加不接入下游的 `/scan_raw`。
+开始建图前可先独立检查转换，不加载 Nav2：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+source scripts/setup_simdog.bash
+GO2_D435_GAZEBO_ENABLED=0 \
+ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
+  lidar_debug_raw_scan:=true tuning_gui:=true
+```
+
+RViz 中应看到 `Velodyne 3D Points`、橙色 `Leveled Navigation Scan`、洋红色
+`Raw Tilting Scan` 和中文 `Scan Health`；该入口与完整导航都会发布 `/scan`，二者不能
+同时运行。完整三终端顺序、各 Display 含义、预期结果和失败分支见
+[go2_lidar_scan 使用说明](simdog/src/go2_lidar_scan/README.md)。
+先前完整运动 A/B 在机身倾斜 `5.15°` 时得到“原始切片 4430、重力对齐 0 个地面
+获胜端点”，240 个采样点云 TF 全部成功，`/scan=8.89 Hz`，`map→odom` 最大单步
+`0.0224 m/0.00698 rad`，只证明该批样本的倾斜地面端点门 PASS。人工在线复测仍出现
+白色扇形线和幽灵代价岛；用户随后通过 rqt 将窗口调为 `+0.20..+0.30 m` 后，现场目视
+在线 SLAM 恢复正常。该值现已固化为正式 `/scan` 默认值，并继续支持在 rqt 动态调整；
+完整覆盖建图、保存和固定图导航仍待按流程验收。`/scan_raw` 固定保留旧
+`-0.05..+0.10 m` 作为 A/B。1800 水平列对照只有 `5.06 Hz`；默认改用 900 列
+（0.4°）只为恢复 Gazebo 实时率。导航仿真默认 `use_d435_navigation:=false`，避免与本任务无关的 D435 渲染争抢
+资源；普通 Gazebo 入口仍启用 D435，需要联合感知 A/B 时可显式传 `true`。
+
+几何闭环通过后已单独完成 `0.50 m` 候选实验：六处相关量程配置同步修改，前/后/左/右
+四方向、四距离各 3×10 帧。后方 0.50 m 为 0% 检出并发生接触，右方也发生接触，故
+候选被否决，全部配置恢复 `0.90 m`；不能只改单个 `/scan.range_min`。
+结束时使用：
+
+```bash
+bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 该脚本保存的 `map.yaml/map.pgm` 可直接作为固定 AMCL 地图；AMCL 不要求三维 PCD。
+同目录还保存 `slam.posegraph/slam.data` 和记录本次实际雷达参数的 `session.yaml`。
 脚本还会让 `$GO2_PROJECT_ROOT/go2_maps/online/latest` 指向最近保存的在线会话。它与
 LIO-SAM/NDT 使用的 `$GO2_PROJECT_ROOT/go2_maps/latest` 不是同一目录；固定 AMCL 不应省略或写错
 `map_dir`。固定模式不会自动选择地图质量，实际来源必须这样核实：
@@ -514,7 +549,7 @@ LIO-SAM PCD 转栅格只保留给 NDT 同源地图实验，不建议作为默认
 ```bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map localization:=amcl \
-    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/learning_room rviz:=true
+    map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/my_world_full_v1 rviz:=true
 ```
 
 导航中普通取消点击 RViz `Navigation 2 -> Cancel`。卡住时使用：
@@ -524,12 +559,32 @@ ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
 ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 ```
 
-当前障碍安全验收有一个明确停点：用户已观察到 Global Costmap 幽灵障碍跳位/残留，且
-标准方块进入 LiDAR 近距盲区后代价区消失并发生接触。阶段 0 调参框架、阶段 1 盲区量化、
-阶段 2 Footprint 几何分别 PASS，但系统级安全门为 **FAIL**，阶段 3 Inflation 尚未开始，
-三个 profile 仍为 `UNCALIBRATED`。现有 stop/decel zone 位于已实测 LiDAR 可靠下限以内，
-不得把“配置已存在”当作急停已验证。排障和后续门禁见
+当前 Global Costmap 的现场基线为 `inflation_radius=0.20 m`、
+`cost_scaling_factor=0.5`；Local Costmap 保持 `0.30 m/3.0`。配合正式雷达高度窗
+`0.20..0.30 m` 后，用户反馈幽灵代价区域已基本不出现，偶尔只在远处看到残余。高度窗
+负责减少错误输入端点，全局膨胀参数只控制每个端点周围代价扩散的范围与梯度，不能把
+远处残余描述为已从输入端彻底消失。
+
+2026-08-22 已修复 `/scan` 空射线 clearing 契约：无回波恢复为 `+inf`，local/global
+source 都启用 `inf_is_valid=true`，并使用 `obstacle_max_range=14.0 m <
+raytrace_max_range=15.0 m`。最终 2 m 方块的 scan/Velodyne 各 3×30 帧检出率均为
+100%；实际删除后精确方块区域 Local Costmap lethal 格从 64 降至 57，删除前背景为
+55。这个删除测试只证明“真实障碍消失后能够清除”，不能证明运动期不会生成新的错误
+端点；当前现场结果是主要现象基本消失、远处偶发残余。Global Inflation 已采用
+`0.20 m/0.5` 现场基线，但尚未完成安全标定；现有
+stop/decel zone 仍位于 LiDAR 近距盲区内，因此系统级障碍安全门仍为 **FAIL**，三个
+profile 仍为 `UNCALIBRATED`。不得把本次 clearing PASS 误写成近距防撞已通过。证据和
+后续门禁见
 [幽灵障碍与近距碰撞调查](simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md)。
+
+同日运动复测实测出白色放射线的一条输入成因：机身原地转向倾斜 `4–6°` 时，旧坐标
+高度切片会让地面成为最近端点；最终样本旧投影为 4430 个地面获胜格，重力对齐后为 0。
+`map -> odom` 最大单步为 `0.0224 m/0.00698 rad`，完整栈扫描频率 `8.89 Hz`，独立
+RViz A/B 约 `9.15 Hz`。最终 135 秒运动中 costmap 仍记录到两次过旧观测丢弃；这是跳过
+迟到帧，不会凭空生成端点，但继续作为时序残余记录。由于后续人工在线 SLAM 仍复现扇形
+白线；随后用户现场把高度窗调为 `0.20..0.30 m` 后目视恢复正常，该值现为默认基线。
+这不替代完整路线建图、保存和固定图导航验收；下方 Collision Monitor 近距几何门也仍
+独立为 FAIL，不得混为一谈。
 
 导航栈运行时，键盘遥控必须从安全链入口发布：
 
@@ -609,8 +664,9 @@ ros2 topic echo --once /ndt_pose
   按需使用 `LIBGL_ALWAYS_SOFTWARE=1`。
 - LIO-SAM 当前关闭回环检测，正式地图应在目标场景重新采集和评估。
 - 默认在线 Slam Toolbox、固定图 AMCL、实验 NDT、SmacPlanner2D + MPPI/RPP 与安全链
-  已接通；在线模式已通过 12 次连续短目标。但新发现的幽灵障碍 clearing 与近距碰撞使
-  当前系统级安全门为 FAIL；10 分钟压力、移动障碍和完整失效注入不得提前开始。
+  已接通；在线模式已通过 12 次连续短目标。`/scan` 空射线 clearing 已通过一次实际删除
+  方块冒烟测试，但近距 Collision Monitor 几何仍为 FAIL；静止/多位置/10 分钟压力、
+  移动障碍和完整失效注入尚未完成，系统级安全门仍为 FAIL。
 - 默认控制档已由 `forward_rpp`（Rotation Shim + RPP）切换为 `forward_mppi`
   （DiffDrive MPPI）。RPP 对照档仍保留 Rotation Shim、实时 TF 终点路径锁存、
   0.45 rad/s 开环限加速度定向与五层只读诊断。旧实现的两个内部同 XY `±90°` 专项目标曾成功，但新锁存

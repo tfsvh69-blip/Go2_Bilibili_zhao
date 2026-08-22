@@ -1,12 +1,13 @@
 # simdog 工作空间包结构详解
 
-> 最后更新：2026-08-09
+> 最后更新：2026-08-22
 
 ## 概述
 
 `simdog/` 是本项目的唯一 colcon 工作空间。经 `colcon list` 实际识别到
-**24 个 ROS 2 包**：13 个工作空间级功能/接口包，以及 `unitree-go2-ros2/` 下的
-8 个 CHAMP 包、1 个遥控包、1 个 Go2 描述包和 1 个 Go2 配置包。
+**25 个 ROS 2 包**。新增的 `go2_lidar_scan` 把 VLP-16 点云转二维扫描的参数、诊断、
+独立 RViz 和回归测试从导航包中分离出来；上游转换算法仍由
+`pointcloud_to_laserscan` 提供。
 这些包共同组成完整的 Unitree Go2 四足机器人仿真开发环境。
 
 目标系统：Ubuntu 22.04 / ROS 2 Humble / Gazebo Classic 11。
@@ -19,6 +20,7 @@
 simdog/src/
 ├── fast_gicp/                   # CUDA 加速点云配准库
 ├── go2_behaviors/               # 常用仿真动作与 CHAMP 控制权仲裁
+├── go2_lidar_scan/              # VLP-16 点云转 /scan、诊断和独立 RViz
 ├── go2_navigation/              # 自主导航（地图包、Nav2、安全链）
 ├── go2_nav2_bt_navigator/       # 内部 raw NavigateToPose 启动器（Apache-2.0 派生）
 ├── go2_unitree_sim_bridge/      # Unitree Sport API 仿真兼容桥
@@ -201,7 +203,36 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ---
 
-### 3.5 pointcloud_to_laserscan — 点云/激光扫描转换
+### 3.5 go2_lidar_scan — Go2 的点云转扫描总装包
+
+**路径：** `simdog/src/go2_lidar_scan/`
+
+**功能：** 统一维护 `/velodyne_points -> /scan` 的项目配置和可观察验证：
+
+- `config/vlp16_scan.yaml` 是高度、角分辨率、量程和 `+inf` 语义的唯一参数源；
+- C++ `level_frame_publisher` 按点云时间戳发布去除 roll/pitch 的
+  `base_footprint→velodyne_level`，失败时不复用旧 TF；
+- 对齐节点和上游转换器装入同一个 component container；只有精确时间戳 TF 成功后才把
+  原消息放行到内部 `/go2_lidar_scan/leveled_cloud`，避免“TF 还没到，扫描先发出”；
+- `scan_pipeline.launch.py` 供完整导航复用，避免多处配置漂移；
+- `simulation_scan_debug.launch.xml` 启动 Gazebo、转换诊断和专用 RViz；
+- `scan_diagnostics` 在 `/diagnostics` 和 `/go2_lidar_scan/markers` 输出频率、新鲜度、
+  当前高度窗、原始姿态、同时间戳 TF、有效/无回波/非法值和静止帧跳变；
+- `motion_scan_probe` 是不发布速度的只读 A/B 工具，只在订阅存在时从
+  `/go2_lidar_scan/probe_cloud` 每 5 帧取样，逐帧 CSV 与汇总 JSON 保存在包内；
+- `/scan_raw` 只在 `lidar_debug_raw_scan:=true` 时出现，不接入 SLAM、Nav2 或碰撞监控。
+
+本包不重新实现投影算法。当前保持真实 VLP-16 约 1 m 下限对应的仿真
+`range_min=0.90 m`，正式 `/scan` 使用用户现场确认正常的 `+0.20..+0.30 m` 高度窗，且可在 rqt 真正动态
+修改 `min_height/max_height`；`/scan_raw` 固定保留 `V1.1.0` 的
+`-0.05..+0.10 m` 作为 A/B，并用
+`use_inf=true` 配合 Nav2 `inf_is_valid=true`、14 m marking、15 m clearing。
+历史 900 水平列、16 线样本中，完整运动 `/scan=8.89 Hz`；最大机身倾斜 5.15° 时旧
+投影地面端点 4430、对齐后 0。人工曾在较低窗口复现幽灵图，调到 `0.20..0.30 m` 后
+现场目视正常；完整建图/保存/固定图导航仍待验收。0.50 m 候选
+四方向测试因后/右接触被否决并恢复 0.90 m。
+
+### 3.5A pointcloud_to_laserscan — 上游点云/激光扫描转换
 
 **路径：** `simdog/src/pointcloud_to_laserscan/`
 
@@ -209,7 +240,9 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 - **PointCloudToLaserScanNode：** 3D 点云 → 2D 激光扫描（按高度范围截取并投影）
 - **LaserScanToPointCloudNode：** 2D 激光扫描 → 3D 点云（反向转换）
 
-**在本项目中：** 用于将 3D Velodyne 点云降维为 2D 激光扫描，供需要 2D 激光数据的算法（如 laser-based SLAM）使用。
+**在本项目中：** 作为 `go2_lidar_scan` 复用的 BSD-3-Clause 上游算法，将 3D Velodyne
+点云降维为 2D 激光扫描；本仓库只补充 Humble 的高度参数回调，正式转换器允许
+`min_height/max_height` 热修改，其他参数和原始 A/B 转换器拒绝热修改。
 
 ---
 
@@ -222,7 +255,10 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 - **R200** — 深度相机（RGB + 深度 + 红外）
 - **D435** — 深度相机（RGB + 深度 + 红外）
 
-**在本项目中：** 通过 Xacro 宏嵌入 Go2 模型（`depthcam.xacro`），为 Go2 提供视觉传感器仿真。
+**在本项目中：** 通过 Xacro 宏嵌入 Go2 模型（`depthcam.xacro`），为 Go2 提供视觉
+传感器仿真。普通 Gazebo 默认使用 640×480、color/depth 10 Hz、双红外 1 Hz；统一导航
+仿真默认 `use_d435_navigation:=false`，会保留 D435 links/TF 但不实例化 Gazebo 相机
+传感器和插件，避免与 VLP-16 `gpu_ray` 争抢渲染资源。显式传 `true` 才做联合感知。
 
 ---
 
@@ -355,8 +391,10 @@ go2_unitree_sim_bridge <── 状态/TF ── Gazebo
 ### 5.3 RealSense D435 深度相机
 
 - 主模型 `robot_VLP.xacro` 当前挂载 D435
-- 提供 RGB 图像和深度图像
-- `gazebo_velodyne.launch.py` 启动时会加载 `realsense_gazebo_plugin`
+- 普通 `gazebo_velodyne.launch.py` 提供 RGB、深度和红外话题并加载
+  `realsense_gazebo_plugin`
+- `simulation_navigation.launch.xml` 默认是 LiDAR-only 性能档；传
+  `use_d435_navigation:=true` 才启用相机和 Collision Monitor 的 depth source
 
 ---
 

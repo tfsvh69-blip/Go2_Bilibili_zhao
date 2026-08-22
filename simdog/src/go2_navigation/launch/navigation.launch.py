@@ -2,7 +2,7 @@
 """Go2 自主导航主入口。
 
 固定地图流程：二维地图校验 -> AMCL（默认）/NDT -> Nav2 -> 安全控制链。
-在线建图流程：pointcloud_to_laserscan -> slam_toolbox -> Nav2 -> 安全控制链。
+在线建图流程：go2_lidar_scan -> slam_toolbox -> Nav2 -> 安全控制链。
 （twist_mux -> velocity_smoother -> collision_monitor -> /cmd_vel）-> RViz。
 
 控制链话题：
@@ -103,6 +103,10 @@ def _build_actions(context):
         LaunchConfiguration("tuning_gui").perform(context))
     health_on = _as_bool(
         LaunchConfiguration("health_check").perform(context))
+    lidar_debug_raw_scan = _as_bool(
+        LaunchConfiguration("lidar_debug_raw_scan").perform(context))
+    use_d435_navigation = _as_bool(
+        LaunchConfiguration("use_d435_navigation").perform(context))
     minimum_goal_clearance_m = float(
         LaunchConfiguration("minimum_goal_clearance_m").perform(context))
 
@@ -150,34 +154,36 @@ def _build_actions(context):
                                        "localization.launch.py")
     online_slam_launch = os.path.join(
         share_dir, "launch", "online_slam.launch.py")
+    lidar_scan_launch = os.path.join(
+        FindPackageShare("go2_lidar_scan").find("go2_lidar_scan"),
+        "launch", "scan_pipeline.launch.py")
 
     actions = [
         LogInfo(msg=(
             "Go2 导航参数：ROS_DOMAIN_ID=%s，mode=%s，controller=%s，"
             "map_dir=%s，localization=%s，use_sim_time=%s，rviz=%s，"
             "tuning_gui=%s，"
-            "health_check=%s，目标余量=%.2f m"
+            "health_check=%s，raw_scan=%s，D435导航=%s，目标余量=%.2f m"
             % (os.environ.get("ROS_DOMAIN_ID", "0"), navigation_mode,
                controller_profile, map_dir, localization, use_sim_time,
-               rviz_on, tuning_gui_on, health_on, minimum_goal_clearance_m)))
+               rviz_on, tuning_gui_on, health_on, lidar_debug_raw_scan,
+               use_d435_navigation,
+               minimum_goal_clearance_m)))
     ]
     if deprecated_mode:
         actions.append(LogInfo(msg=(
             "[弃用提示] navigation_mode:=static_bundle 已按 static_map 处理；"
             "请更新启动命令。")))
 
-    # 两种模式共用唯一 /scan：VLP-16 水平切片，不重复启动第二套 Gazebo 2D 雷达。
+    # 两种模式共用 go2_lidar_scan 的唯一 /scan，不重复启动第二套转换器或 Gazebo 2D 雷达。
     actions.append(
-        Node(
-            package="pointcloud_to_laserscan",
-            executable="pointcloud_to_laserscan_node",
-            name="pointcloud_to_laserscan",
-            output="screen",
-            parameters=[
-                os.path.join(share_dir, "config", "online_mapping.yaml"),
-                {"use_sim_time": use_sim_time},
-            ],
-            remappings=[("cloud_in", "/velodyne_points"), ("scan", "/scan")],
+        IncludeLaunchDescription(
+            AnyLaunchDescriptionSource(lidar_scan_launch),
+            launch_arguments={
+                "use_sim_time": str(use_sim_time).lower(),
+                "diagnostics": "true",
+                "lidar_debug_raw_scan": str(lidar_debug_raw_scan).lower(),
+            }.items(),
         ))
 
     if navigation_mode == "online_slam":
@@ -207,6 +213,10 @@ def _build_actions(context):
         if name == "bt_navigator":
             # 多个 goal checker 时，Humble 的默认树会让 FollowPath 发送空 ID。
             node_parameters.append({"default_nav_to_pose_bt_xml": navigation_bt})
+        if name == "collision_monitor" and not use_d435_navigation:
+            # LiDAR 根因验收档不启动 Gazebo D435，避免虚假的
+            # 超时告警；扫描仍通过同一 collision_monitor 安全链。
+            node_parameters.append({"observation_sources": ["scan"]})
         actions.append(
             Node(package=pkg, executable=exe, name=name, output="screen",
                  parameters=node_parameters,
@@ -267,6 +277,8 @@ def _build_actions(context):
                 arguments=[
                     "--standalone",
                     "rqt_reconfigure.param_plugin.ParamPlugin",
+                    "--args",
+                    "/go2_lidar_scan_converter",
                 ],
             ))
 
@@ -315,6 +327,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "health_check", default_value="false",
             description="启动后运行健康检查节点"),
+        DeclareLaunchArgument(
+            "lidar_debug_raw_scan", default_value="false",
+            description="额外发布倾斜坐标系 /scan_raw，仅用于 RViz/A-B 诊断"),
+        DeclareLaunchArgument(
+            "use_d435_navigation", default_value="true",
+            description=("D435 是否接入导航安全链；仿真 LiDAR 根因验收"
+                         "默认关闭以避免 Gazebo 渲染抢占 gpu_ray")),
         DeclareLaunchArgument(
             "minimum_goal_clearance_m", default_value="0.10",
             description="联调阶段目标/起点到二维障碍和地图边界的最小余量（米）"),

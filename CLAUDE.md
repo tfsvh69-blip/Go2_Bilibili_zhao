@@ -58,6 +58,7 @@
 - `simdog/src/unitree-go2-ros2/`：Go2 模型、CHAMP 四足步态、`ros2_control`、Gazebo 世界和机器人配置。
 - `simdog/src/go2_behaviors/`：复用标准关节轨迹接口实现的打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
 - `simdog/src/go2_unitree_sim_bridge/`：把 Gazebo/CHAMP 映射为 Unitree Sport API 消息、话题和受支持请求。
+- `simdog/src/go2_lidar_scan/`：复用上游点云投影，统一维护 VLP-16 `/velodyne_points -> /scan` 参数、诊断 Marker 与独立 RViz 排障入口。
 - `simdog/src/lidar_localization_ros2/`：BSD-2-Clause 的 NDT/GICP 实验定位库，提供自动初始定位、诊断、重定位与 PCD 转二维地图工具。
 - `simdog/src/go2_navigation/`：自主导航包，默认提供在线 Slam Toolbox 建图导航，固定地图默认使用 AMCL，
   NDT + 二维 EKF 作为实验档，并提供 SmacPlanner2D + MPPI（默认）/RPP（对照）、安全控制链与健康检查。
@@ -106,6 +107,7 @@ source install/setup.bash
 
 ```bash
 ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true
+GO2_D435_GAZEBO_ENABLED=0 ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml
 ros2 launch lio_sam lidar.launch.py rviz:=true
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ros2 run go2_behaviors go2_behavior hello
@@ -117,7 +119,7 @@ ros2 run go2_behaviors go2_behavior hello
 # 默认：从空图开始在线建图导航，地图会随机器人探索扩展
 ros2 launch go2_navigation simulation_navigation.launch.xml
 # 保存后得到的 map.yaml/pgm 可直接用于固定 AMCL，不要求 GlobalMap.pcd
-bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 # 固定二维地图：AMCL 定位，静态地图不会自行扩展
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
@@ -215,6 +217,14 @@ bash scripts/verify_gpu_runtime.sh
 - NDT 使用前必须提供有效 `GlobalMap.pcd`，并通过 `/initialpose` 给出合理初始位姿。
 - 固定 AMCL 应优先使用 Slam Toolbox 原生保存的二维 `map.yaml/pgm`；LIO-SAM PCD 高度
   投影容易把多高度点变成二维伪障碍，只用于需要 PCD 同源数据的 NDT 实验档。
+- `/scan` 统一由 `go2_lidar_scan` 生成；当前仿真保持 VLP-16 的 `0.90 m` 最小量程，
+  正式高度窗为用户现场确认目视正常的 `0.20..0.30 m`，并可在 rqt 动态调节。重力对齐
+  运动 A/B 和 `+inf` clearing 子门已通过；完整覆盖建图、保存、固定图导航及近距
+  Collision Monitor 几何仍未验收。不得把现场目视或子门通过等同于整套防撞安全通过。
+- Global Costmap 当前现场基线为 `inflation_radius=0.20 m`、
+  `cost_scaling_factor=0.5`，Local Costmap 保持 `0.30 m/3.0`。幽灵代价区域已基本不再
+  出现，但远处偶有残余；这组全局值只改变代价扩散，不代表错误端点绝对归零或安全余量
+  已标定。
 - 根目录已配置 Git，默认分支为 `main`，远端为 `origin`；提交前仍须核对工作区，避免混入用户的无关修改。
 
 ## 提交与合并请求

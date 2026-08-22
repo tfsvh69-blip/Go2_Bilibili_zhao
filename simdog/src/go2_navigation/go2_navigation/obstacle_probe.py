@@ -193,7 +193,7 @@ def summarize_group(
     maximum_abs_error_p95: float,
     contact_events: int,
 ) -> dict[str, Any]:
-    """计算一组帧的检测率、误差和到达周期分位数。"""
+    """计算一组帧的检测率、误差、到达周期和无接触验收结果。"""
 
     detected = [item for item in observations if item.detected]
     absolute_errors = [abs(item.signed_error_m) for item in detected]
@@ -211,6 +211,7 @@ def summarize_group(
         and error_p95 is not None
         and error_p95 <= maximum_abs_error_p95
         and tf_rate == 1.0
+        and contact_events == 0
     )
     return {
         "sensor": sensor,
@@ -739,6 +740,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         result = {
             "status": status,
+            # complete 只表示采集流程完成；acceptance_pass 才表示所有
+            # 传感器/距离/重复组同时满足检出、误差、TF 与无接触门。
+            "acceptance_pass": (
+                status == "complete"
+                and len(summaries)
+                == len(distances) * arguments.groups * len(sensors)
+                and all(bool(summary["pass"]) for summary in summaries)
+            ),
             "distance_definition": "配置的传感器原点（默认 velodyne）到方块前表面的法向距离",
             "distances_m": distances,
             "probe_angle_deg": arguments.probe_angle_deg,

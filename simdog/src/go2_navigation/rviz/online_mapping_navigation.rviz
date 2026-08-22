@@ -120,7 +120,7 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/LaserScan
       Enabled: true
-      Name: SLAM Scan
+      Name: Leveled Navigation Scan
       Alpha: 1
       Color: 255; 85; 0
       Decay Time: 0
@@ -135,6 +135,23 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /scan
       Value: true
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: false
+      Name: Raw Tilting Scan (Debug Only)
+      Alpha: 0.75
+      Color: 255; 0; 170
+      Decay Time: 0.20
+      Position Transformer: XYZ
+      Size (Pixels): 3
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /scan_raw
+      Value: false
     - Class: rviz_default_plugins/PointCloud2
       Enabled: false
       Name: Velodyne Points
@@ -153,6 +170,18 @@ Visualization Manager:
         Reliability Policy: Best Effort
         Value: /velodyne_points
       Value: false
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: LiDAR Scan Health
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /go2_lidar_scan/markers
+      Value: true
     - Class: rviz_default_plugins/Path
       Enabled: true
       Name: Raw Global Plan

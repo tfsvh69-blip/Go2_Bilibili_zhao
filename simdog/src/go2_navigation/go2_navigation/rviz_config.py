@@ -47,10 +47,9 @@ def validate_navigation_rviz(path: str | Path) -> list[str]:
         "Controller Path (Smoothed)": (
             "rviz_default_plugins/Path", "/received_global_plan"),
     }
-    if online_mode:
-        expected_displays["SLAM Scan"] = (
-            "rviz_default_plugins/LaserScan", "/scan")
-    else:
+    expected_displays["Leveled Navigation Scan"] = (
+        "rviz_default_plugins/LaserScan", "/scan")
+    if not online_mode:
         expected_displays["AMCL Pose"] = (
             "rviz_default_plugins/PoseWithCovariance", "/amcl_pose")
     for name, (expected_class, expected_topic) in expected_displays.items():

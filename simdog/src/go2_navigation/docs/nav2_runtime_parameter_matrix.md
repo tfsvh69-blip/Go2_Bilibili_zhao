@@ -36,8 +36,8 @@ read-back 冒充生效，又避免在 unconfigured 态死等。依据分别是
 |---|---|---|---|---:|---|---|
 | `local.inflation_radius` | `/local_costmap/local_costmap.inflation_layer.inflation_radius` | float/m | `navigation.yaml: local_costmap.local_costmap.ros__parameters.inflation_layer.inflation_radius` | 0.30 | 0–5 | LIVE |
 | `local.cost_scaling_factor` | `/local_costmap/local_costmap.inflation_layer.cost_scaling_factor` | float/1/m | 同层 `cost_scaling_factor` | 3.0 | 0.01–100 | LIVE |
-| `global.inflation_radius` | `/global_costmap/global_costmap.inflation_layer.inflation_radius` | float/m | `navigation.yaml: global_costmap.global_costmap.ros__parameters.inflation_layer.inflation_radius` | 0.30 | 0–5 | LIVE |
-| `global.cost_scaling_factor` | `/global_costmap/global_costmap.inflation_layer.cost_scaling_factor` | float/1/m | 同层 `cost_scaling_factor` | 3.0 | 0.01–100 | LIVE |
+| `global.inflation_radius` | `/global_costmap/global_costmap.inflation_layer.inflation_radius` | float/m | `navigation.yaml: global_costmap.global_costmap.ros__parameters.inflation_layer.inflation_radius` | 0.20 | 0–5 | LIVE |
+| `global.cost_scaling_factor` | `/global_costmap/global_costmap.inflation_layer.cost_scaling_factor` | float/1/m | 同层 `cost_scaling_factor` | 0.5 | 0.01–100 | LIVE |
 | `geometry.local_footprint` | `/local_costmap/local_costmap.footprint` | string polygon/m | `navigation.yaml: local_costmap.local_costmap.ros__parameters.footprint` | 阶段 2 标定的 24 顶点凸包 | ≥3 个有限二维顶点 | LIVE |
 | `geometry.global_footprint` | `/global_costmap/global_costmap.footprint` | string polygon/m | `navigation.yaml: global_costmap.global_costmap.ros__parameters.footprint` | 同上 | ≥3 个有限二维顶点 | LIVE |
 | `geometry.local_padding` | `/local_costmap/local_costmap.footprint_padding` | float/m | local costmap `footprint_padding` | 0.035 | 0–0.5 | LIVE |
@@ -63,7 +63,7 @@ Costmap2DROS 的 footprint 与 padding 动态回调会更新发布足迹。上�
 | `observation_persistence` | float/s | 0.0 | 0.0 | 0.0 | 0–10 | LIFECYCLE RELOAD |
 | `expected_update_rate` | float/s | 0.0 | 0.0 | 0.0 | 0–60；0 关闭 stale 检查 | LIFECYCLE RELOAD |
 | `obstacle_min_range` | float/m | 0.0 | 0.0 | 0.0 | 0–50 | LIFECYCLE RELOAD |
-| `obstacle_max_range` | float/m | 15.0 | 2.5 | 15.0 | 0–100 | LIFECYCLE RELOAD |
+| `obstacle_max_range` | float/m | 14.0 | 2.5 | 14.0 | 0–100；scan 必须小于 15 m 空射线端点 | LIFECYCLE RELOAD |
 | `raytrace_min_range` | float/m | 0.0 | 0.0 | 0.0 | 0–50 | LIFECYCLE RELOAD |
 | `raytrace_max_range` | float/m | 15.0 | 3.0 | 15.0 | 0–100 | LIFECYCLE RELOAD |
 | `min_obstacle_height` | float/m | 0.0 | 0.05 | 0.0 | -10–10 | LIFECYCLE RELOAD |
@@ -155,7 +155,7 @@ ros2 run go2_navigation nav_tuner --monitor-only
 
 | 面板 | 来源 | 正常含义 | 异常表现 |
 |---|---|---|---|
-| Sensor | `/scan`、`/depth/color/points` | Hz、墙钟年龄、p50/p95/p99 周期；scan 的 valid/inf/nan 与最近有限距离 | age 增长、Hz 为 N/A 或最近距离被 `range_min` 截断 |
+| Sensor | `/scan`、可选 `/depth/color/points` | Hz、墙钟年龄、p50/p95/p99 周期；scan 的 valid/inf/nan 与最近有限距离 | age 增长、Hz 为 N/A 或最近距离被 `range_min` 截断；LiDAR-only 档的 D435 N/A 是预期 |
 | Costmap | `*/costmap_raw`、`*/published_footprint`、TF | lethal/inflated 数、机器人到最近 lethal 格方形边界的距离、实际 footprint | 一直全零、footprint 顶点不随参数变、TF 不可用时距离 N/A |
 | Plan | `/plan` | 路径长度、年龄、重规划间隔；按半个栅格加密后到 lethal 方格边界的保守 clearance | 目标活动时 plan 过旧、间隔偏离 1 Hz、clearance 过小 |
 | Controller | 四级速度话题 | RPP 插件、调速开关、上游是否调速、Collision Monitor 是否进一步限速 | 上游有速度但下游长期为零，或最终速度绕过监控 |
@@ -207,10 +207,28 @@ ros2 run go2_navigation nav_tuner --monitor-only
   从 YAML 冷启动后两者均不超过 `2.11×10⁻⁸ m`，健康检查 PASS，最终 `/cmd_vel`
   发布者唯一。长 footprint 现规范化为单行 JSON，`save` 不再产生 PyYAML 折行转义。
 
-结论：阶段 0 工具链、阶段 1 LiDAR 盲区和阶段 2 Footprint 均 PASS；Inflation、
-Persistence、Depth 和 Collision Monitor 数值仍未标定，不能把当前配置称为安全最优值。
-用户随后观察到 Global Costmap 幽灵障碍和近距方块碰撞，当前系统级安全门已改判为 FAIL。
-静态审计确认 `/scan` 使用 `+inf`，而两个 ObstacleLayer source 的 `inf_is_valid` 默认
-为 false；现有 stop/decel zone 又位于实测 LiDAR 盲区内。阶段 3 前必须先完成 clearing
-与 `map→odom` 基线，详见
+## 2026-08-22 重力对齐与动态高度实验基线
+
+- 统一仿真导航默认 `use_d435_navigation:=false`：不创建 D435 Gazebo 插件，Collision
+  Monitor 只订阅 scan；普通 Gazebo 入口仍启用 D435。显式传 `true` 才做联合感知 A/B。
+- VLP-16 由 1800 水平列降为 900 列（0.4°），16 线、10 Hz 标称和 0.90..15.0 m 不变。
+  最终在线运动 `/scan=8.89 Hz`，独立 RViz 约 9.15 Hz；1800 列对照仅 5.06 Hz。
+- `/scan.frame_id=velodyne_level`，240 个运动样本同时间戳 TF 100%，对齐地面获胜端点
+  0；`map→odom` 最大单步 `0.0224 m/0.00698 rad`。后续人工曾复现幽灵图，随后把
+  高度窗调为 `+0.20..+0.30 m` 后现场目视正常；完整路线建图和固定图导航仍待验收。
+- 正式 `/scan` 当前高度窗为 `+0.20..+0.30 m`，只有 `min_height/max_height` 是
+  LIVE；`/scan_raw` 固定旧 `-0.05..+0.10 m`。正式建图保持默认值并使用
+  `map_session:=new`。
+- 0.50 m 候选做完四方向、四距离各 3×10 帧后因后/右接触被否决，运行基线仍是
+  `range_min=0.90 m`。探针每组 PASS 现在还要求 `contact_events==0`。
+
+结论：阶段 0 工具链、阶段 1 LiDAR 盲区和阶段 2 Footprint 均 PASS；Global Inflation
+当前采用用户指定的 `0.20 m/0.5` 现场基线，Local 保持 `0.30 m/3.0`。两者仍未完成
+系统安全标定，不能把当前配置称为安全最优值。
+2026-08-22 已将 `/scan` 的空射线语义改为 `use_inf=true`、两个 source
+`inf_is_valid=true`、`obstacle/raytrace=14/15 m`；最终 2 m 方块两路各 3×30 帧检出率
+100%，实际删除精确区域 lethal `64→57`（背景 55），clearing PASS。现有 stop/decel
+zone 仍位于实测 LiDAR 盲区内，系统级安全门因此仍为 FAIL；幽灵代价区域目前基本消失，
+但远处偶发残余仍需取证。这与近距防撞是两个不同层级，必须分别闭环。
+详见
 [幽灵障碍与近距碰撞调查](costmap_ghost_obstacle_investigation.md)。

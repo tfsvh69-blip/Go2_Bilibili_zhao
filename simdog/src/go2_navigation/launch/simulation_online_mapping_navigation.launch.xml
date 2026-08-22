@@ -4,6 +4,8 @@
   <arg name="rviz" default="true"/>
   <arg name="tuning_gui" default="false"/>
   <arg name="use_sim_time" default="true"/>
+  <arg name="lidar_debug_raw_scan" default="false"/>
+  <arg name="use_d435_navigation" default="false"/>
   <arg name="controller_profile" default="forward_mppi"/>
   <arg name="map_session" default="new"/>
   <arg name="minimum_goal_clearance_m" default="0.10"/>
@@ -15,6 +17,8 @@
     <arg name="rviz" value="$(var rviz)"/>
     <arg name="tuning_gui" value="$(var tuning_gui)"/>
     <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="lidar_debug_raw_scan" value="$(var lidar_debug_raw_scan)"/>
+    <arg name="use_d435_navigation" value="$(var use_d435_navigation)"/>
     <arg name="controller_profile" value="$(var controller_profile)"/>
     <arg name="minimum_goal_clearance_m" value="$(var minimum_goal_clearance_m)"/>
   </include>

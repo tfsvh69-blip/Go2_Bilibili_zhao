@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "read_only": true,
+  "sampled_cloud_frames": 285,
+  "cloud_tf_failures": 0,
+  "maximum_body_tilt_deg": 4.9527568481647215,
+  "raw_ground_frames": 47,
+  "raw_ground_bins_total": 1565,
+  "level_ground_frames": 0,
+  "level_ground_bins_total": 0,
+  "level_finite_bins_median": 654,
+  "scan_hz": 9.473089777660892,
+  "raw_scan_hz": 0.0,
+  "scan_frame_mismatches": 0,
+  "scan_tf_success_rate": 1.0,
+  "level_frame_max_tilt_deg": 0.0,
+  "map_odom_samples": 2999,
+  "map_odom_max_xy_step_m": 0.04456099748467291,
+  "map_odom_max_yaw_step_rad": 0.00698000000000012,
+  "failures": [],
+  "warnings": [],
+  "incomplete_reasons": []
+}

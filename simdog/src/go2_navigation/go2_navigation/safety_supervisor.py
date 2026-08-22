@@ -102,8 +102,8 @@ class NavigationSafetySupervisor(Node):
         self.declare_parameter("amcl_lost_yaw_std_rad", 0.75)
         self.declare_parameter("amcl_recovery_position_std_m", 0.55)
         self.declare_parameter("amcl_recovery_yaw_std_rad", 0.50)
-        # 当前 16x1800 gpu_ray 在 Gazebo 启动/高负载窗口实测最长可间断
-        # 约 1.5 s；联调期采用 2.0 s，仍能在传感器真正失效时确定停车。
+        # 最终 16x900 完整运动为 8.89 Hz；联调期仍采用 2.0 s，
+        # 待更长压力与失效注入后再按 p99 单变量收紧。
         self.declare_parameter("scan_timeout_sec", 2.0)
         mode = str(self.get_parameter("navigation_mode").value)
         self._navigation_mode = "static_map" if mode == "static_bundle" else mode
@@ -188,7 +188,8 @@ class NavigationSafetySupervisor(Node):
         }
 
         self._required_nodes = set(NAVIGATION_LIFECYCLE_NODES) | {
-            "pointcloud_to_laserscan", "twist_mux", "go2_goal_guard"
+            "go2_lidar_level_frame", "go2_lidar_scan_converter",
+            "twist_mux", "go2_goal_guard"
         }
         if self._navigation_mode == "online_slam":
             self._required_nodes.add("slam_toolbox")

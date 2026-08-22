@@ -43,8 +43,10 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "message_filters/subscriber.h"
 #include "tf2_ros/buffer.h"
@@ -52,6 +54,7 @@
 #include "tf2_ros/transform_listener.h"
 
 #include "rclcpp/rclcpp.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 
@@ -76,6 +79,9 @@ public:
 private:
   void cloudCallback(sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud_msg);
 
+  rcl_interfaces::msg::SetParametersResult parameterCallback(
+    const std::vector<rclcpp::Parameter> & parameters);
+
   void subscriptionListenerThreadLoop();
 
   std::unique_ptr<tf2_ros::Buffer> tf2_;
@@ -87,9 +93,14 @@ private:
   std::thread subscription_listener_thread_;
   std::atomic_bool alive_{true};
 
+  // 高度窗口允许通过 rqt_reconfigure 在线调整；点云回调每帧只读取一次快照。
+  std::mutex height_mutex_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
+
   // ROS Parameters
   int input_queue_size_;
   bool always_subscribe_;
+  bool allow_runtime_height_update_;
   std::string target_frame_;
   double tolerance_;
   double min_height_, max_height_, angle_min_, angle_max_, angle_increment_, scan_time_, range_min_,

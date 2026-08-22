@@ -40,10 +40,12 @@
 
 #include "pointcloud_to_laserscan/pointcloud_to_laserscan_node.hpp"
 
+#include <cmath>
 #include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -65,6 +67,8 @@ PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions &
   input_queue_size_ = this->declare_parameter(
     "queue_size", static_cast<int>(std::thread::hardware_concurrency()));
   always_subscribe_ = this->declare_parameter("always_subscribe", false);
+  allow_runtime_height_update_ = this->declare_parameter(
+    "allow_runtime_height_update", false);
   min_height_ = this->declare_parameter("min_height", std::numeric_limits<double>::min());
   max_height_ = this->declare_parameter("max_height", std::numeric_limits<double>::max());
   angle_min_ = this->declare_parameter("angle_min", -M_PI);
@@ -76,9 +80,18 @@ PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions &
   inf_epsilon_ = this->declare_parameter("inf_epsilon", 1.0);
   use_inf_ = this->declare_parameter("use_inf", true);
 
-  pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", rclcpp::SensorDataQoS());
+  if (!std::isfinite(min_height_) || !std::isfinite(max_height_) ||
+    min_height_ >= max_height_)
+  {
+    throw std::invalid_argument("min_height/max_height 必须为有限数且 min_height < max_height");
+  }
 
   using std::placeholders::_1;
+  parameter_callback_handle_ = this->add_on_set_parameters_callback(
+    std::bind(&PointCloudToLaserScanNode::parameterCallback, this, _1));
+
+  pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan", rclcpp::SensorDataQoS());
+
   // if pointcloud target frame specified, we need to filter by transform availability
   if (!target_frame_.empty()) {
     tf2_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -107,6 +120,70 @@ PointCloudToLaserScanNode::PointCloudToLaserScanNode(const rclcpp::NodeOptions &
     subscription_listener_thread_ = std::thread(
       std::bind(&PointCloudToLaserScanNode::subscriptionListenerThreadLoop, this));
   }
+}
+
+rcl_interfaces::msg::SetParametersResult PointCloudToLaserScanNode::parameterCallback(
+  const std::vector<rclcpp::Parameter> & parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = false;
+
+  double proposed_min;
+  double proposed_max;
+  {
+    std::lock_guard<std::mutex> lock(height_mutex_);
+    proposed_min = min_height_;
+    proposed_max = max_height_;
+  }
+
+  bool height_changed = false;
+  for (const auto & parameter : parameters) {
+    const auto & name = parameter.get_name();
+    if (name == "use_sim_time") {
+      // rclcpp 自己维护该通用参数，允许其按 ROS 2 标准语义修改。
+      continue;
+    }
+    if (name != "min_height" && name != "max_height") {
+      result.reason =
+        "运行时只支持 min_height/max_height；其余投影参数需改配置并重启，避免界面值已变但算法未变";
+      return result;
+    }
+    if (!allow_runtime_height_update_) {
+      result.reason = "本节点未启用 allow_runtime_height_update，需改配置并重启";
+      return result;
+    }
+    if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+      result.reason = name + " 必须是 double";
+      return result;
+    }
+    const double value = parameter.as_double();
+    if (!std::isfinite(value)) {
+      result.reason = name + " 必须是有限数";
+      return result;
+    }
+    if (name == "min_height") {
+      proposed_min = value;
+    } else {
+      proposed_max = value;
+    }
+    height_changed = true;
+  }
+
+  if (proposed_min >= proposed_max) {
+    result.reason = "必须满足 min_height < max_height";
+    return result;
+  }
+
+  if (height_changed) {
+    std::lock_guard<std::mutex> lock(height_mutex_);
+    min_height_ = proposed_min;
+    max_height_ = proposed_max;
+    RCLCPP_INFO(
+      this->get_logger(), "二维扫描高度窗口已生效：[%.3f, %.3f] m", min_height_, max_height_);
+  }
+  result.successful = true;
+  result.reason = "参数已生效";
+  return result;
 }
 
 PointCloudToLaserScanNode::~PointCloudToLaserScanNode()
@@ -150,6 +227,14 @@ void PointCloudToLaserScanNode::subscriptionListenerThreadLoop()
 void PointCloudToLaserScanNode::cloudCallback(
   sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud_msg)
 {
+  double min_height;
+  double max_height;
+  {
+    std::lock_guard<std::mutex> lock(height_mutex_);
+    min_height = min_height_;
+    max_height = max_height_;
+  }
+
   // build laserscan output
   auto scan_msg = std::make_unique<sensor_msgs::msg::LaserScan>();
   scan_msg->header = cloud_msg->header;
@@ -201,11 +286,11 @@ void PointCloudToLaserScanNode::cloudCallback(
       continue;
     }
 
-    if (*iter_z > max_height_ || *iter_z < min_height_) {
+    if (*iter_z > max_height || *iter_z < min_height) {
       RCLCPP_DEBUG(
         this->get_logger(),
         "rejected for height %f not in range (%f, %f)\n",
-        *iter_z, min_height_, max_height_);
+        *iter_z, min_height, max_height);
       continue;
     }
 

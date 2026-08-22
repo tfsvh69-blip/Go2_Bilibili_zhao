@@ -1,6 +1,6 @@
 # Go2 导航、建图与 RViz 初学者图解手册
 
-> 最后更新：2026-08-15
+> 最后更新：2026-08-22
 > 适用环境：Ubuntu 22.04、ROS 2 Humble、Gazebo Classic 11、Nav2、CHAMP 以及本仓库 `simdog/` 工作空间。
 > 文档目标：看到一个名词、颜色、箭头或状态时，能够回答“它是什么、来自哪里、正常应怎样、异常该查什么”。
 
@@ -22,7 +22,7 @@
 ```text
 Gazebo 中的 Go2 与传感器
         │
-        ├─ /velodyne_points ─ pointcloud_to_laserscan ─ /scan
+        ├─ /velodyne_points ─ go2_lidar_scan（复用上游投影）─ /scan
         ├─ /depth/color/points
         ├─ /imu/data
         └─ /odom/ground_truth ─ go2_simulation_odom ─ /odom + odom→base_footprint
@@ -253,6 +253,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 | `map.yaml` | PGM 路径、分辨率、原点和阈值 | `map_server` | 与对应 PGM 配套 |
 | `slam.posegraph` | Slam Toolbox 位姿图 | Slam Toolbox 续建/定位 | 不是给 AMCL 直接读取的图片 |
 | `slam.data` | Slam Toolbox 序列化传感器/图数据 | Slam Toolbox | 与 posegraph 配套 |
+| `session.yaml` | 保存时间、扫描 frame 与当时生效的雷达参数 | 人工复现和质量追溯 | 不参与 AMCL 计算，但不要删除 |
 | `GlobalMap.pcd` | 三维点集合 | NDT/GICP、点云查看 | 不能直接当二维栅格 |
 | `map_bundle.yaml` | PCD/PGM/YAML 同源性与哈希清单 | NDT 实验档门禁 | AMCL 原生二维图不要求它 |
 
@@ -289,12 +290,32 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 项目保存命令：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh learning_room
+bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 ![地图保存终端](images/rviz_guide/map_save_terminal.png)
 
-终端中 `waiting for service to become available...` 表示脚本正在等待保存服务被 ROS 发现，不等于保存已经成功。必须等它继续输出成功路径和文件，再关闭建图节点。
+终端中 `waiting for service to become available...` 表示脚本正在等待保存服务被 ROS 发现，不等于保存已经成功。必须等它继续输出四个阶段成功，并确认目录中同时存在
+`map.pgm/map.yaml`、`slam.posegraph/slam.data` 和 `session.yaml`，再关闭建图节点。
+
+正式建图先保持当前 `min_height=0.20 m`、`max_height=0.30 m`。键盘驾驶不要只绕外墙：
+先沿外圈走一圈，再用平行往返路线覆盖内部，绕主要障碍物一圈，最后回到起点附近形成
+闭环并静止 5–10 秒。只有 `Live SLAM Map` 的墙线单层清楚、计划导航区域为连续白色、
+没有从机器人向外发散的白线时才保存。目录命名建议用
+`场景_覆盖范围_版本`，例如 `my_world_full_v1`。
+
+保存后完全退出在线 SLAM，再用明确目录（正式复现不要只写 `latest`）启动固定图：
+
+```bash
+ros2 launch go2_navigation simulation_navigation.launch.xml \
+  navigation_mode:=static_map localization:=amcl \
+  map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/my_world_full_v1 \
+  controller_profile:=forward_mppi gui:=true rviz:=true
+```
+
+RViz 先点 `2D Pose Estimate`，把箭头放在实际出生位置并拖向真实朝向；等
+`Navigation: active` 后，再按短直线、90° 转弯、长走廊、返回起点的顺序点 `Nav2 Goal`。
+这时 `Static Map` 不会继续扩展，动态变化的是机器人位姿和两张 Costmap。
 
 ## 6. ROS 2 基础名词
 
@@ -380,7 +401,12 @@ ros2 topic info /tf --verbose
 | Velodyne VLP-16 | 16 线三维旋转激光雷达 | `/velodyne_points` |
 | PointCloud2 | 带 x/y/z 等字段的三维点集合 | `/velodyne_points`、`/depth/color/points` |
 | LaserScan | 按角度排列的一圈二维距离 | `/scan` |
-| `pointcloud_to_laserscan` | 从 VLP-16 水平高度切片生成二维扫描 | 输入点云，输出 `/scan` |
+| `pointcloud_to_laserscan` | 成熟的上游投影算法 | 由 `go2_lidar_scan` 调用，输入点云、输出 `/scan` |
+| `min_height` / `max_height` | 二维投影保留点层的下/上边界，相对雷达原点 | 当前唯一允许 rqt 在线修改的两个投影参数 |
+| rqt_reconfigure | ROS 2 动态参数窗口 | 改值后仍要看 Marker 和参数回读，不能只相信界面 |
+| `go2_lidar_scan` | 本项目的参数、启动、诊断和 RViz 封装包 | 唯一维护 `/velodyne_points -> /scan` 契约 |
+| `+inf` | 该角度在最大量程内没有打到物体，不等于错误 | 当前用于让 Nav2 沿空射线清除旧障碍 |
+| 越量程值 | 小于 `range_min` 或大于 `range_max` 的有限数 | 当前正常应为 0；旧配置曾产生 `16 m > 15 m` |
 | RealSense D435 | RGB-D 深度相机 | `/depth/color/points` 等 |
 | IMU | 加速度计和陀螺仪 | `/imu/data` |
 | JointState | 关节位置、速度、力 | `/joint_states` |
@@ -390,7 +416,12 @@ ros2 topic info /tf --verbose
 | Latency | 数据从产生到消费的延迟 | 太大会让控制基于过时障碍和位姿 |
 | Timeout | 多久没收到数据就判失效 | 传感器断开后安全锁速依据之一 |
 
-`pointcloud_to_laserscan` 的高度过滤像从一叠立体 CT 切片里只抽取与雷达水平面接近的一层。切得太低会把地面当墙，切得太高会漏掉矮障碍，切得太厚会把多个高度压到同一二维方向。
+`go2_lidar_scan` 调用的 `pointcloud_to_laserscan` 高度过滤，像从一叠立体 CT 切片里只
+抽取与雷达水平面接近的一层。切得太低会把地面当墙，切得太高会漏掉矮障碍，切得太厚会
+把多个高度压到同一二维方向。现场证明旧 `-0.05..+0.10 m` 以及后续
+`+0.05..+0.20 m` 仍可能出现幽灵图；用户把窗口调为 `+0.20..+0.30 m` 后目视建图正常，
+所以正式 `/scan` 已固化为该值。调试 `/scan_raw` 固定保留旧窗作参照。这里的高度以
+`velodyne_level` 雷达原点为零，不是离地高度。
 
 ```bash
 ros2 topic hz /velodyne_points
@@ -652,9 +683,12 @@ Rotation Shim、RPP 或 GoalChecker。
 
 另一个容易混淆的安全现象是“点云仍在，但 `/scan` 停了”。`/velodyne_points` 是原始
 三维点云，`/scan` 是投影后供二维代价图和 Collision Monitor 使用的激光扫描；前者正常
-不代表后者正常。导航档现在把 `pointcloud_to_laserscan.always_subscribe` 设为 `true`，
-让转换器不因 RViz 或临时诊断订阅者离开而停止订阅点云。正常时 `/scan` 持续约 6–7 Hz；
-异常时 `/pause_navigation` 会变为 `true`，此时应先取消目标并检查：
+不代表后者正常。`go2_lidar_scan` 现在把上游转换器的 `always_subscribe` 设为 `true`，
+让它不因 RViz 或临时诊断订阅者离开而停止订阅点云。旧 1800 水平列完整运动只有
+5.06 Hz；最终 900 列、LiDAR-only 导航档完整运动为 8.89 Hz，独立 RViz 约 9.15 Hz，
+已达到 7 Hz 性能门。两者都必须保持 `velodyne_level`，不能把降分辨率误当成几何修复。
+异常时 `/pause_navigation` 会变为
+`true`，此时应先取消目标并检查：
 
 ```bash
 ros2 topic hz /velodyne_points
@@ -759,8 +793,8 @@ ros2 lifecycle get /controller_server
 |---|---|---:|---|---|
 | 局部膨胀半径 | `/local_costmap/local_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | 狗周边的局部障碍警戒带更宽，近场更早绕开 | 更易贴近障碍，安全余量变小 |
 | 局部代价衰减 | `/local_costmap/local_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 离开障碍后代价下降更快，路径更可能靠近膨胀圈边缘 | 代价向外延续更远，局部避障更早让开 |
-| 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
-| 全局代价衰减 | `/global_costmap/global_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 同上，影响规划器绕障的代价梯度 | 同上，障碍影响更向外延续 |
+| 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.20 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
+| 全局代价衰减 | `/global_costmap/global_costmap` → `inflation_layer.cost_scaling_factor` | `0.5 1/m` | 数值越大，代价在膨胀半径内下降越快 | 数值越小，代价在膨胀半径内下降越慢 |
 | 前向速度采样上限 | `/controller_server` → `FollowPath.vx_max` | `0.27 m/s` | 前进更快，转弯过冲和接触模型误差风险上升 | 更稳但完成导航更慢 |
 | 转向速度采样上限 | `/controller_server` → `FollowPath.wz_max` | `0.40 rad/s` | 转向更快，可能超过目标朝向 | 转向更平缓，过小可能难以克服四足接触阻力 |
 | 速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.27, 0.0, 0.40]` | 放宽对应轴的最高速度限制 | 限制对应轴的最高速度 |
@@ -779,9 +813,11 @@ max_velocity = [0.20, 0.0, 0.40]
 `forward_rpp` 对照档对应的是 `FollowPath.desired_linear_vel`（控制器希望达到的速度），
 上限同样由 `velocity_smoother.max_velocity[0]` 兜底。
 
-膨胀调参先保持控制器、传感器缓存和速度不变；先将 local/global 的
-`inflation_radius` 设为已经标定的 Footprint 外接半径约 `0.474 m`，之后每次只加 `0.10 m`，再单独试
-`cost_scaling_factor`。RViz 左侧 `Displays` 中一次只打开 `Global Costmap` 或
+当前现场基线只改变 Global Costmap：`inflation_radius=0.20 m`、
+`cost_scaling_factor=0.5`；Local Costmap 仍为 `0.30 m/3.0`。`0.20 m` 小于 Footprint
+外接半径约 `0.474 m`，可能让全局路径更贴墙，所以它代表当前画面/规划 A/B 值，不代表
+安全最优值。继续调参时保持控制器、传感器缓存和速度不变。RViz 左侧 `Displays` 中一次
+只打开 `Global Costmap` 或
 `Local Costmap`，观察障碍周边膨胀圈；同时观察绿色 `Raw Global Plan=/plan` 是否离障碍更远。
 不要只凭颜色判定图层，因为透明度和多个 Display 叠加会改变颜色。
 
@@ -923,11 +959,11 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 
 | 名词/现象 | 数据来源 | 正常含义 | 异常表现 | 可观察验证 |
 |---|---|---|---|---|
-| `reliable_detection_min_distance` | 三组帧级 CSV | 连续三组检测率≥95%、误差 p95≤5 cm 的最小距离 | 只有一次看到就声称可靠 | 查看 `lidar_blind_zone_summary.csv` 的 `pass` |
+| `reliable_detection_min_distance` | 三组帧级 CSV | 连续三组检测率≥95%、误差 p95≤5 cm、TF 100% 且无接触的最小距离 | 只有一次看到或已经接触仍声称可靠 | 查看 `lidar_blind_zone_summary.csv` 的 `pass/contact_events` |
 | 红色方块 | Gazebo 动态实体 | 位置回读误差≤1 cm | 被物理接触推开后仍按请求距离算 | Gazebo 肉眼观察+工具回读 |
 | `contact_events` | `/go2_obstacle_probe/contacts` | 未碰撞时为 0 | 雷达 0% 但 contact 持续增加 | CSV 的 `contact_events_in_group` |
 | 正后方缝隙 | 原始点云与 `/scan` | 170° 方块可见 | 175–180° 方块两条数据链都漏掉 | RViz 打开 `Velodyne Points`、`LaserScan` 对照 |
-| D435 帧率 | `/depth/color/points` | 周期稳定且能支撑 timeout | 本轮约 0.4 Hz，p99 甚至数十秒；Collision Monitor 因时间戳落后 2–6 s 而忽略 source | `ros2 topic hz /depth/color/points`；查看 `collision_monitor` 警告 |
+| D435 帧率 | `/depth/color/points`（可选） | 联合感知档周期稳定且能支撑 timeout | 历史约 0.4 Hz，p99 甚至数十秒；LiDAR-only 导航档无此话题是预期 | `use_d435_navigation:=true` 后再量频率；查看 `collision_monitor` 警告 |
 
 在导航仿真已启动的新终端执行：
 
@@ -942,10 +978,12 @@ ros2 run go2_navigation obstacle_probe --sensors scan,velodyne \
 `/navigation/resume` 并下发新目标。若看到“`/set_entity_state` 不可用”，表示运行的
 world 没有 `gazebo_ros_state` 插件，或尚未重启 Gazebo；不要跳过位置回读继续测。
 
-2026-08-14 的已实测结果是：标准方块正前方可靠下限为 0.90 m，左右为
-1.00 m；0.80 m 以内不能指望该 LiDAR。正后方还有 `gpu_ray` 拼接缝，D435
-也尚未满足正式重复样本。所以在后续安全标定前，不应把“话题存在”当成
-“近距已覆盖”。详细 CSV、方向与障碍厚度对照见
+2026-08-14 的原始 0.90 m 基线是：标准方块正前方可靠下限为 0.90 m，左右为
+1.00 m，正后方还有 `gpu_ray` 拼接缝。2026-08-22 又把六处量程配置临时同步为 0.50 m，
+在四方向对 0.50/0.70/0.90/1.10 m 各做 3×10 帧：后方 0.50 m 三组均 0% 检出且
+发生接触，右方虽 100% 检出也发生接触，因此 0.50 m 被否决，所有配置恢复 0.90 m。
+D435 也尚未满足正式重复样本。所以在后续安全标定前，不应把“话题存在”当成
+“近距已覆盖”，也不能把“检测到了但已经接触”算 PASS。详细 CSV、方向与障碍厚度对照见
 `simdog/src/go2_navigation/docs/lidar_blind_zone_validation.md`。
 
 ### 10.6 Footprint 校准：画的是整只机器狗的动态影子
@@ -1038,13 +1076,24 @@ RPP 自带的路径碰撞预测和 Collision Monitor 是两层不同保护：前
 SmacPlanner2D 在“识别物体”：规划器只读取 Global Costmap，真正写格子的是 Static
 Layer 和 `/scan` ObstacleLayer。
 
-当前 `/scan` 用 `+inf` 表示某个方向没有回波，但 local/global source 的
-`inf_is_valid` 没有显式开启，Nav2 默认是 false。结果像白板上只允许“看到新物体时画点”，
-却不允许“确认一路为空时用板擦擦线”：有限端点会标记新障碍，无回波方向不能生成
-清除到远处的射线。机器人换位置或 `map→odom` 修正后，新端点落在新格子；旧格只有后来
-被另一条有限射线穿过时才清掉，于是肉眼看到跳动和概率消失。
+修复前，空方向没有形成合法的 clearing ray：一版把无回波写成 `16 m`，超过 `/scan`
+声明的 `15 m`；另一版虽输出 `+inf`，local/global source 却未启用
+`inf_is_valid`。效果都像白板上只允许“看到新物体时画点”，不能用“这一路已经空了”
+的板擦及时清除旧格。
 
-这项审计能解释 clearing 不及时，但尚未证明最初的错误端点来自哪里。应这样区分：
+2026-08-22 已把整组语义一起修复：
+
+```text
+/go2_lidar_scan_converter: use_inf=true、range_max=15.0 m
+local/global source:       inf_is_valid=true
+marking 上限:              obstacle_max_range=14.0 m
+clearing 上限:             raytrace_max_range=15.0 m
+```
+
+Nav2 会把 `+inf` 临时变成 `14.9999 m`。因为它大于 14 m，所以不会在远方重新画障碍；
+又不超过 15 m，因此仍能把旧格沿射线擦掉。最终 2 m 方块测试中，scan 和 Velodyne
+各 3 组×30 帧检出率均为 100% 且无接触；实际删除后精确方块区域 Local Costmap
+lethal 格由 `64` 降到 `57`，删除前背景为 `55`，clearing PASS。若仍看到异常，应这样区分：
 
 1. RViz 只开 `Static Map`；异常岛仍在，说明保存的 PGM 已污染。
 2. 只开 `LaserScan`，Fixed Frame 分别选 `odom` 和 `map`；只在 `map` 中跳，说明
@@ -1054,19 +1103,125 @@ Layer 和 `/scan` ObstacleLayer。
 
 ```bash
 ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
-ros2 param get /pointcloud_to_laserscan use_inf
+ros2 param get /go2_lidar_scan_converter use_inf
+ros2 param get /go2_lidar_scan_converter range_min
 ros2 param get /local_costmap/local_costmap scan_layer.scan.inf_is_valid
 ros2 param get /global_costmap/global_costmap obstacle_layer.scan.inf_is_valid
+ros2 param get /local_costmap/local_costmap scan_layer.scan.obstacle_max_range
+ros2 param get /local_costmap/local_costmap scan_layer.scan.raytrace_max_range
 ```
 
-当前预期读到 `use_inf=True`、两个 `inf_is_valid=False`。注意不能只把后者改成 true：
-当前 scan、marking 和 raytrace 最大距离都是 `15.0 m`，Nav2 会把 `+inf` 变成
-`14.9999 m`；如果 marking 上限仍为 15 m，远端点可能被重新画成障碍。实验要把
-`inf_is_valid`、`obstacle_max_range`、`raytrace_max_range` 作为同一个空射线语义组，
-先只测 local、Lifecycle reload/重启，再只测 global，且检查最远处没有新障碍环。
-不能只看参数 read-back，也不要混入 Inflation，否则每个幽灵 lethal 格都会被一起放大。
+当前预期为 `True`、`0.9`、两个 `True`、`14.0` 和 `15.0`。不能只改其中一项，也不能
+只看参数回读：必须实际生成、再删除 Gazebo 障碍并看 lethal 格是否回到背景。不要同时
+修改 Inflation 或 Persistence，否则很难知道是哪一项改变了清除结果。
 官方语义见
 [Nav2 Obstacle Layer 参数说明](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html)。
+
+第一次采图前可单独启动转换诊断：
+
+```bash
+source scripts/setup_simdog.bash
+GO2_D435_GAZEBO_ENABLED=0 \
+ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
+  lidar_debug_raw_scan:=true
+```
+
+专用 RViz 中，`Velodyne 3D Points` 是原始灰/彩色三维点，橙色
+`Leveled Navigation Scan` 是默认水平二维切片，洋红色 `Raw Tilting Scan` 是调试用
+原始倾斜切片，`Scan Health` 是雷达上方中文文字。绿色“转换链正常”表示输入输出新鲜、
+量程合法且静止帧跳变没有越门；橙色是低频/跳变警告，红色通常是点云或 `/scan` 超时。
+出现橙/红时先停止键盘和导航，再用 `ros2 topic hz /velodyne_points`、
+`ros2 topic hz /scan` 与 `ros2 topic echo /diagnostics --once` 查具体原因。独立入口与完整
+导航都会发布 `/scan`，不能同时启动。
+
+### 机器狗转向时的白色放射线：为什么先“扶平”，还要继续查高度层
+
+2026-08-22 的运动 A/B 把其中一条成因从推测变成实测。四足转向不像小车底盘那样始终
+水平：身体会轻微点头和侧倾，雷达坐标系 `velodyne` 也跟着倾斜约 `4–6°`。旧转换器
+像拿一把随身体倾斜的刀去切点云的 `-0.05..0.10 m` 薄层；刀的远端会切到地板，地板点
+便被误认为真正障碍端点。Slam Toolbox 沿这些假端点清图/画图，就会出现从狗身向空区
+伸出的白色线；Costmap 再给每个假端点加安全外圈，于是变成青色、紫色或粉色岛。
+
+```text
+肉眼现象：转向时白线/孤岛出生，停下或多转几圈后又被较快修正
+      ↓
+数据链：倾斜 velodyne 中切高度层 → 地面进入 /scan → SLAM/ObstacleLayer 画错格
+      ↓
+第一层修复：先把点云变到 velodyne_level → 再切高度层 → /scan
+      ↓
+现场仍复现：说明旧探针只覆盖了部分端点 → 固定其他变量，继续做高度窗 A/B
+```
+
+`velodyne_level` 可以理解成“固定在雷达原点上的虚拟水平仪”：位置跟着真实雷达，朝向
+跟着机器狗转弯的 yaw，但把点头 roll 和侧倾 pitch 清零。它不是把机器人模型扶平，
+也不是修改原始三维点云；只是给二维投影选择正确的重力参考。
+
+实现还设了两道“闸门”。`/go2_lidar_scan/leveled_cloud` 只在该点云时间戳的精确 TF
+查到后，才把原消息交给同进程转换器；名字中的 leveled 表示“允许按 level frame
+转换”，并不是已经复制出一份旋转后的点云。`/go2_lidar_scan/probe_cloud` 只在诊断工具
+订阅时每 5 帧发一次，避免取证把完整点云每帧都搬出进程。TF 缺失就丢弃本帧并报诊断，
+不会拿旧姿态拼新点云。
+
+| RViz 名称/状态 | 数据来源 | 正常含义 | 异常时怎么看 |
+|---|---|---|---|
+| `Velodyne 3D Points` | `/velodyne_points` | 原始三维世界，包含地面和多层高度 | 整体无数据先查 Gazebo 雷达 |
+| `Leveled Navigation Scan`（橙） | `/scan`，frame=`velodyne_level` | 真正接入 SLAM/Nav2 的水平二维切片 | 朝空区出现随身体摆动的射线为异常 |
+| `Raw Tilting Scan`（洋红） | 调试 `/scan_raw` | 故意保留旧倾斜投影，只用于 A/B | 不能接入 SLAM、代价图或碰撞监控 |
+| `leveled_cloud`（内部） | 原始点云 Header + 精确时间戳 TF 闸门 | 只交给组合进程中的正式转换器 | 不应被 SLAM/Nav2 直接订阅 |
+| `probe_cloud`（只读） | 有订阅者时每 5 帧抽样 | 给 `motion_scan_probe` 计算同角度格 A/B | 无探针时不发布是正常节流 |
+| `Scan Health` | `/go2_lidar_scan/markers` | 绿=正常，橙=频率/跳变警告，红=TF/帧/超时错误 | 先停车，再读 `/diagnostics` |
+| `Live SLAM Map` | `/map`（Slam Toolbox） | 在线探索时应扩展；机器人移动时不会整图乱跳 | 白色放射线是地图被错误端点写入 |
+| `Global Costmap` | Static+Obstacle+Inflation | 大范围规划代价，可随实时障碍变化 | 脱离实物的膨胀岛先查 `/scan`/TF |
+| `Local Costmap` | 机器人附近滚动代价窗 | 随机器人平移窗口、随实时障碍更新 | 不是静态地图，不应把滚动误认成地图漂移 |
+
+![重力对齐扫描与原始倾斜扫描的真实 RViz 窗口](../simdog/src/go2_lidar_scan/docs/images/rviz_scan_debug_final.png)
+
+图中左侧可见两个 LaserScan Display，顶部为 `Global Status: Ok`。这是旧高度窗下的一次
+历史清洁重启截图；同次 `/scan` 约 9.15 Hz，健康 Marker 为绿色且显示对齐姿态
+`0.00°/0.00°`。Display 名前的红色折线是 `Raw Tilting Scan` 的颜色图标，不是红色
+错误灯；要展开 Status 或读 `/diagnostics`，不能只凭图标颜色猜原因。
+
+历史运动证据中，机身倾斜 `5.15°` 时，旧投影得到 4430 个地面获胜角度格，重力对齐
+得到 0；240 帧点云 TF 全成功，`/scan=8.89 Hz`，`map→odom` 最大单步为
+`0.0224 m/0.00698 rad`，该批样本的地面/TF/频率子门 PASS。后续人工在线 SLAM 曾
+复现扇形白线；把高度窗调为 `0.20..0.30 m` 后现场目视正常，现进入完整建图、保存和
+固定图导航验收。1800 水平列 A/B 同样消除了地面端点但只有
+5.06 Hz；默认 900 列（0.4°）只负责恢复实时率。历史 135 秒
+运行中 costmap 仍丢弃过 2 个过旧观测，这会少用一帧，不会凭空生成障碍，仍需长期监测。
+
+导航专用仿真默认 `use_d435_navigation:=false`，不实例化 D435 Gazebo 渲染插件，避免
+它和 `gpu_ray` 争抢渲染资源；普通 Gazebo 启动仍保留 D435。需要联合感知时显式传
+`use_d435_navigation:=true`，并重新检查两路频率，不能把 LiDAR-only 的 PASS 直接外推。
+
+初学者按三个终端复测：终端 1 运行
+`simulation_navigation.launch.xml map_session:=new tuning_gui:=true`，
+终端 2 运行 `ros2 run go2_lidar_scan motion_scan_probe --duration 150`，终端 3 运行键盘并
+把 `cmd_vel` 重映射到 `/cmd_vel_teleop`。完整可复制命令见
+[`go2_lidar_scan/README.md`](../simdog/src/go2_lidar_scan/README.md)。机器人不动、RViz 红项或
+TF 报错时，先松开键盘并执行：
+
+```bash
+ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
+ros2 topic echo /diagnostics --once
+ros2 topic info /scan --verbose
+ros2 run tf2_ros tf2_echo base_footprint velodyne_level
+```
+
+正常 `/scan` 只能有一个发布者，frame 必须是 `velodyne_level`。排障健康后用
+`/navigation/resume` 解锁；旧目标不会自动续行。
+
+rqt 默认直接选中 `/go2_lidar_scan_converter`。只改 `min_height/max_height`；当前正式值是
+`0.20/0.30 m`，建正式地图时不要再调。两者必须始终满足 `min < max`。
+`Scan Health` 的 `height` 行和下面的回读都应立即变化：
+
+```bash
+ros2 param get /go2_lidar_scan_converter min_height
+ros2 param get /go2_lidar_scan_converter max_height
+```
+
+动态参数重启即恢复 YAML。旧白线已经写入当前 `/map` 后不会因调参凭空消失，因此正式
+比较每个候选时，都要重启并使用 `map_session:=new`。升高下边界可减少地面/低层回波，
+但太高会漏掉矮障碍；这就是不能只看“地图变干净”而必须同时看橙色 `/scan` 的原因。
 
 ### 为什么方块靠近后消失，现有急停区却没有救下来
 
@@ -1074,6 +1229,8 @@ ros2 param get /global_costmap/global_costmap obstacle_layer.scan.inf_is_valid
 0% 检出。Velodyne 原点又在 `base_footprint` 前约 `0.20 m`，所以方块表面仍可靠可见的
 最近位置约是基座前 `1.10 m`。但当前 Collision Monitor 的 decel/stop 前缘只有
 `0.72/0.52 m`：障碍点要进入警戒区，必须先深入 LiDAR 盲区，几何上无法可靠触发。
+后续临时 0.50 m 模型虽然能在前方看到更近方块，却在后/右方向发生实体接触，未通过
+四方向无接触门，因此不能改变当前 0.90 m 默认值和上述安全结论。
 
 按当前 `0.20 m/s` 和 approach `1.5 s`，外扩 Footprint 前缘约 `0.389 m`，预测最远仅
 约 `0.389 + 0.20×1.5 = 0.689 m`，仍短于 `1.10 m` 可靠边界。D435 又因 p99 周期
@@ -1086,9 +1243,9 @@ ros2 param get /global_costmap/global_costmap obstacle_layer.scan.inf_is_valid
 
 ### Local Costmap 打开后为什么仍可能一片空白
 
-正常的 Local Costmap 是跟随狗移动的 `5×5 m` 小窗口，数据来自 `/scan` 和
-`/depth/color/points`，经过 Obstacle Layer 标记/清除后再由 Inflation Layer 生成障碍周围
-的渐变代价。它像“狗身边随身携带的一块透明方格纸”，不会扩展固定 `/map`。观察时先把
+正常的 Local Costmap 是跟随狗移动的 `5×5 m` 小窗口，默认 LiDAR-only 导航档数据来自
+`/scan`；显式启用联合感知时才再加入 `/depth/color/points`。数据经过 Obstacle Layer
+标记/清除后再由 Inflation Layer 生成障碍周围的渐变代价。它像“狗身边随身携带的一块透明方格纸”，不会扩展固定 `/map`。观察时先把
 RViz 放大到机器人附近，并且一次只打开 `Local Costmap`；如果同时打开 Static Map 和
 Global Costmap，同一高度的半透明图层可能让局部窗口很难辨认。
 
@@ -1186,6 +1343,10 @@ ros2 control list_controllers
 | Local Costmap | `/local_costmap/costmap` | 近场滚动代价 | 查狗附近假障碍和停走 |
 | Velodyne Points | `/velodyne_points` | 三维激光点 | 查原始传感器和外参，默认关闭以降负载 |
 | SLAM Scan | `/scan` | 二维激光点 | 查激光是否贴合墙线 |
+| LiDAR Scan Health | `/go2_lidar_scan/markers` | 雷达上方中文健康文字 | 绿=正常，橙=低频/跳变，红=超时或断链；先停车再查 `/diagnostics` |
+| Leveled Navigation Scan | `/scan`，frame=`velodyne_level` | 专用排障 RViz 的橙色重力对齐切片 | 与 `Velodyne 3D Points` 对照墙体端点是否贴合、复制或残留 |
+| Raw Tilting Scan | `/scan_raw`，仅调试 | 洋红色旧倾斜切片 | 只做 A/B，不得接入 SLAM、Nav2 或碰撞监控 |
+| Scan Health | `/go2_lidar_scan/markers` | 专用排障 RViz 的中文 Marker | 数据来源和颜色含义与 `LiDAR Scan Health` 相同 |
 | Localization Map | `/global_map` | NDT 三维 PCD | 仅 NDT 实验档需要 |
 | Raw Global Plan | `/plan` | 绿色原始规划路径 | 查规划器给出的路线是否折线化 |
 | Controller Path (Smoothed) | `/received_global_plan` | 蓝色控制器路径 | 对照平滑是否生效；回退时会接近原始路径，正常会裁掉已走部分 |
@@ -1347,6 +1508,7 @@ ROS **package（包）** 是一组相关源码、配置、启动文件和依赖�
 | 包名 | 用一句话解释 |
 |---|---|
 | `go2_navigation` | 本项目导航总装包：模式入口、Nav2 参数、地图工具、目标门禁、安全监督和 RViz 配置 |
+| `go2_lidar_scan` | VLP-16 点云转 `/scan` 的唯一参数源、中文诊断、独立 RViz 和回归测试 |
 | `go2_navigation_bt_plugins` | 终点路径锁存 BehaviorTree 插件，防止 1 Hz 重规划重置 Rotation Shim |
 | `go2_behaviors` | 打招呼、点头、趴下等仿真行为，并负责与导航互斥 |
 | `go2_unitree_sim_bridge` | 把 Unitree Sport API 请求和状态映射到 Gazebo/CHAMP |

@@ -1,0 +1,37 @@
+<launch>
+  <!-- 只验证原始点云、二维扫描与诊断，不启动 SLAM/Nav2。 -->
+  <arg name="start_gazebo" default="true"/>
+  <arg name="gui" default="true"/>
+  <arg name="rviz" default="true"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="lidar_debug_raw_scan" default="true"/>
+  <arg name="tuning_gui" default="false"/>
+
+  <!-- 隔离 Gazebo 子启动的同名 rviz 参数，否则 value=false 会泄漏到
+       下方专用 RViz 的 IfCondition，造成“参数为 true 但窗口没启动”。 -->
+  <group scoped="true" if="$(var start_gazebo)">
+    <include file="$(find-pkg-share go2_config)/launch/gazebo_velodyne.launch.py">
+      <arg name="gui" value="$(var gui)"/>
+      <arg name="rviz" value="false"/>
+      <arg name="unitree_bridge" value="false"/>
+      <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    </include>
+  </group>
+
+  <include file="$(find-pkg-share go2_lidar_scan)/launch/scan_pipeline.launch.py">
+    <arg name="use_sim_time" value="$(var use_sim_time)"/>
+    <arg name="diagnostics" value="true"/>
+    <arg name="lidar_debug_raw_scan" value="$(var lidar_debug_raw_scan)"/>
+  </include>
+
+  <node pkg="rviz2" exec="rviz2" name="go2_lidar_scan_rviz"
+        args="-d $(find-pkg-share go2_lidar_scan)/rviz/scan_debug.rviz"
+        if="$(var rviz)">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+  <!-- rqt 直接定位正式转换器；只允许 min_height/max_height 真正动态生效。 -->
+  <node pkg="rqt_gui" exec="rqt_gui" name="go2_lidar_height_tuning"
+        args="--standalone rqt_reconfigure.param_plugin.ParamPlugin --args /go2_lidar_scan_converter"
+        if="$(var tuning_gui)"/>
+</launch>

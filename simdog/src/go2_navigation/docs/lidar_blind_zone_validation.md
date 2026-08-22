@@ -1,8 +1,32 @@
 # Go2 Gazebo 激光雷达近距盲区量化
 
+## 2026-08-22 最小量程候选复测
+
+重力对齐、TF、频率和在线 SLAM 门通过后，按单变量原则把 Gazebo `gpu_ray` 量程、
+Velodyne 插件量程、两个转换器、诊断、Slam Toolbox 和 AMCL 同时临时改为 `0.50 m`。
+前、左、后、右方向都采集 `0.50/0.70/0.90/1.10 m`，每个距离 3 组×10 帧，scan 与
+原始点云同时记录。结果如下：
+
+| 方向 | 0.50 m 检出 | 误差门 | 接触事件 | 最终判定 |
+|---|---:|---:|---:|---|
+| 前 | 三组均 100% | p95 最大约 0.00255 m | 0/0/0 | PASS |
+| 左 | 三组均 100% | p95 最大约 0.00393 m | 0/0/0 | PASS |
+| 后 | 三组均 0% | 无法计算 | 2950/2942/3000 | **FAIL** |
+| 右 | 三组均 100% | p95 最大约 0.00442 m | 965/968/1016 | **FAIL** |
+
+`0.70/0.90/1.10 m` 在四方向本次短测中都达到检出率、误差和无接触门，但计划验收的是
+是否可把默认值直接降至 0.50 m；因为后/右失败，候选被否决，所有配置已经一致恢复
+`0.90 m`。0.70 m 只作为以后重新校准 footprint/接触模型后的候选，不能凭本次短测
+直接改默认。原始证据位于 `go2_lidar_scan/logs/min_range_050_*_20260822/`。
+
+探针现在把 `contact_events == 0` 正式纳入每组 `pass`，JSON 另给
+`acceptance_pass`；`status=complete` 只表示采集正常结束。上面四个目录生成于该硬门加入
+之前，因此历史右侧 CSV 的 `pass=True` 仅表示检出/误差/TF 通过，最终判定必须同时读取
+`contact_events`。
+
 ## 结论与阶段门禁
 
-实测日期：2026-08-14。阶段 1 的“可重复地量化盲区”门禁为 **PASS**，但这不等于
+以下是 2026-08-14 的原始 0.90 m 基线。阶段 1 的“可重复地量化盲区”门禁为 **PASS**，但这不等于
 传感器在所有方向都通过安全验收。已确认的边界是：
 
 - 0.30 m 深、0.30 m 宽、0.50 m 高的标准方块位于激光雷达水平面、正前方时，
@@ -60,7 +84,8 @@ python3 simdog/src/go2_navigation/tools/obstacle_probe.py --help
 
 1. 检测率不低于 95%；
 2. 绝对距离误差 p95 不大于 0.05 m；
-3. TF 成功率为 100%。
+3. TF 成功率为 100%；
+4. ContactSensor 事件为 0。
 
 每组完成后都会更新帧级 CSV、汇总 CSV 和 JSON；中途超时保留已完成组。
 
@@ -83,12 +108,13 @@ python3 simdog/src/go2_navigation/tools/obstacle_probe.py --help
 | 检查项 | 已实测/静态证据 | 判断 |
 |---|---|---|
 | 量程下限 | xacro 的 `gpu_ray <range><min>` 和 Velodyne plugin `min_range` 均为 0.9 m | 正前 0.90→0.80 m 断崖的主因 |
-| 二维切片 | `pointcloud_to_laserscan` 为 `-0.05..0.10 m`；原始点云与 `/scan` 同时跳变 | 不是正前方盲区的主因 |
-| TF | `/scan` frame 为 `velodyne`；D435 转到 `velodyne` 的 TF 能成功查询 | 正式 LiDAR 样本 TF 成功率 100% |
+| 二维切片 | `go2_lidar_scan` 调用上游投影，使用 `-0.05..0.10 m`；原始点云与 `/scan` 同时跳变 | 不是正前方盲区的主因 |
+| TF | 历史 `/scan` frame 为 `velodyne`；现为 `velodyne_level` | 最终运动样本同时间戳 TF 成功率 100% |
 | 障碍垂直厚度 | 1.00 m 处，0.10 m 厚三组 100%；0.02 m 厚三组仅 55–65% | 受 VLP-16 垂直角分辨率影响，不是单纯的 scan 高度切片 |
 | 方向 | 170° PASS，175/179/180° FAIL，原始点云与 `/scan` 一致 | 仿真 `gpu_ray` 在 ±π 有后向拼接缝 |
 
-本阶段不改 `range_min`，也不用未标定的 D435 盖住结果。这些数据作为后续
+2026-08-14 阶段没有改 `range_min`；2026-08-22 候选复测按完整变量组改动并已恢复。
+两轮都不用未标定的 D435 盖住结果。这些数据作为后续
 Footprint、Inflation、停车余量与 Collision Monitor 的输入；其中正后向缝隙与
 D435 低频必须在阶段 5–6 再决定是否修正或禁用相应 source。
 
@@ -110,3 +136,10 @@ LiDAR 盲区。阶段 6 重新标定并通过 ContactSensor 重复试验前，�
 - `stage1_direction_left/right/rear*_20260814`：方向对照；
 - `stage1_height_0p10/0p02_20260814`：垂直厚度对照；
 - `stage1_d435_diagnostic_20260814`：明确标记为非正式的 D435 小样本诊断。
+
+2026-08-22 的候选结果位于 `simdog/src/go2_lidar_scan/logs/`：
+
+- `min_range_050_front_20260822`；
+- `min_range_050_left_20260822`；
+- `min_range_050_rear_20260822`；
+- `min_range_050_right_20260822`。

@@ -50,13 +50,11 @@
     <!-- Gazebo requires the velodyne_gazebo_plugins package -->
     <gazebo reference="velodyne">
         <sensor name="velodyne-VLP16" type="gpu_ray">
-            <!-- gpu_ray:16×1800=28800条/帧的光线投射交给本机RTX 4060 Laptop GPU，而非拖垮gzserver单线程CPU。
+            <!-- gpu_ray:16×900=14400条/帧的光线投射交给本机RTX 4060 Laptop GPU，而非拖垮gzserver单线程CPU。
                  若换 gpu_ray 后 /velodyne_points 无数据,把这里改回 "ray" 并将下方 samples 降到 512。 -->
-            <!-- 时间错位修复：gpu_ray 是"瞬时全向渲染"，一帧点云几何是渲染过程中某时刻的，
-                 但 header.stamp 是渲染结束时刻。机器人旋转/运动时，点云带旧位姿投影到新位姿，
-                 远处点产生弧线偏移（偏移≈距离×Δθ），被 costmap 标记成幽灵障碍。
-                 水平 samples 1800→900（0.2°→0.4°/条，仍细于 pointcloud_to_laserscan 的 0.5°切片），
-                 渲染耗时减半 → 错位窗口减半。真机 VLP-16 为旋转扫描，此改动仅适配 Gazebo gpu_ray。 -->
+            <!-- 重力对齐已根治倾斜地面误点；900（0.40°）是独立的运动期
+                 实时性档。1800 在完整 SLAM + 四足物理运动时产生最长
+                 4.4 s 仿真时间断流；降采样不代替、也不掩盖姿态根因修复。 -->
             <pose>0 0 0 0 0 0</pose>
             <visualize>false</visualize>
             <update_rate>10</update_rate>  <!-- 降低更新率以匹配实际情况 -->

@@ -2,6 +2,19 @@
 
 本 ROS 2 包提供将 `sensor_msgs/msg/PointCloud2` 消息转换为 `sensor_msgs/msg/LaserScan` 消息以及反向转换的组件。本质上是原始 ROS 1 包的移植版本。
 
+## 本仓库的 Humble 运行时高度扩展
+
+Go2 项目在保留上游 BSD 实现和投影语义的基础上，只为
+`PointCloudToLaserScanNode` 增加了 `min_height`、`max_height` 动态参数支持。ROS 2
+Humble 原实现只在构造函数读取这两个值，直接用 rqt 修改会出现参数服务器数值已变、
+点云循环仍用旧成员的假象。
+
+本仓库版本用 `add_on_set_parameters_callback` 原子验证并更新高度快照：两值必须有限且
+`min_height < max_height`。其他算法参数在运行时会被拒绝并要求改 YAML 后重启，避免
+形成“界面成功、算法未生效”的隐蔽状态。该扩展没有改写每角度格选择最近点的上游算法。
+节点还必须在启动配置中显式设置 `allow_runtime_height_update=true` 才开放高度热修改；
+Go2 正式 `/scan` 开放，作为 A/B 基线的 `/scan_raw` 不开放。
+
 ## pointcloud_to_laserscan::PointCloudToLaserScanNode
 
 此 ROS 2 组件将 `sensor_msgs/msg/PointCloud2` 消息投影为 `sensor_msgs/msg/LaserScan` 消息。

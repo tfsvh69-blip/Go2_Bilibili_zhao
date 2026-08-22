@@ -21,7 +21,8 @@ controller_server:
       iteration_count: 1
       temperature: 0.3
       gamma: 0.015
-      visualize: true
+      # 默认关闭 MPPI 轨迹云，避免与双 LaserScan A/B 显示争抢 RViz/Gazebo 资源。
+      visualize: false
       transform_tolerance: 0.2
       critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic",
                 "ObstaclesCritic", "PathAlignCritic", "PathFollowCritic",
