@@ -2,13 +2,214 @@
 
 ## 当前状态
 
-更新时间：2026-08-22
+更新时间：2026-08-26
 
 本目录当前只维护 `simdog/` 一个 ROS 2 Humble colcon 工作空间。它使用 CHAMP
 生成完整四足步态，通过 `ros2_control` 驱动 Go2 的 12 个腿部关节，并集成
 Velodyne、IMU、RealSense、LIO-SAM 建图和 NDT 重定位。
 当前执行 `colcon list` 可识别 25 个 ROS 2 包（含新增的
 `go2_lidar_scan` 和既有 `go2_navigation_bt_plugins`）。
+
+## 2026-08-26 Global Costmap 膨胀半径调整
+
+- 按用户要求，仅将 Global Costmap 的 `inflation_layer.inflation_radius` 从 `0.20 m`
+  改为 `0.50 m`，`cost_scaling_factor` 保持 `0.5`；Local Costmap 继续保持
+  `0.30 m/3.0`，没有同时改动控制器、footprint、传感器或速度参数。
+- 预期可见变化是全局代价带扩大且在 `0.50 m` 内缓慢衰减，`/plan` 更早远离墙面和
+  障碍；代价是窄通道可能不再可通行。该值尚待重启导航后通过 RViz 和重复目标实测，
+  不能写成已经完成安全标定。
+
+## 2026-08-25 固定 AMCL 的 RPP/MPPI 目标对照与 yaw 容差收紧
+
+### 阶段目标与实测
+
+- 用户在 `my_world_full_v1` 固定图上分别以 `forward_rpp` 和
+  `forward_mppi` 重放目标，两次 `/navigate_to_pose` 都返回 `SUCCEEDED`。
+  RPP 停稳后机器人到原始目标为 `0.328 m/0.109 rad`，路径末端到
+  目标为 `0.025 m/0 rad`，`map→odom` 最大单步修正为
+  `0.092 m/0.013 rad`。MPPI 对照为 `0.152 m/0.155 rad`、路径末端到
+  目标 `0.013 m/0 rad`、`map→odom=0.043 m/0.010 rad`；控制器角速度无
+  换向、无背离目标 yaw 样本。这两次证据排除了“SmacPlanner2D
+  把路径末端算错”，但不代表原始踱步现象已完整复现或修复。
+- 用户记录的
+  `/tmp/go2_mppi_repro_20260825_211208` 为 `61.06 s`/`96.4 MiB`，共
+  `33816` 条消息。逐条反序列化确认：接受目标为
+  `(-4.546884,-4.668797,1.148320 rad)`，`/plan` 发布 6 次，路径末端为
+  `(-4.524999,-4.674999,1.148320 rad)`；MPPI 有效速度约在录包后
+  `7.8 s` 结束，平滑与最终速度约在 `9.1 s` 归零，录包仍继续约
+  52 s 才由用户 `Ctrl+C` 停止。`rotation_diagnostics` 是只读节点；
+  action 成功后额外观察 1 s 并自行退出，不会取消导航，`--duration`
+  是“进入终点后最长采样时间”，不是强制 action 运行时长。本包因
+  action 较早成功，未复现持续踱步。
+
+### 参数变更与物理含义
+
+- 按用户要求，普通 `general_goal_checker.yaw_goal_tolerance` 从
+  `0.15 rad`（约 `8.6°`）单步收紧为 `0.10 rad`（约 `5.7°`）；
+  `xy_goal_tolerance=0.30 m`、安全链、碰撞监控和速度上限不变。
+  `rotation_diagnostics` 的 CLI 默认 yaw 容差同步为 `0.10 rad`。该
+  YAML 参数需要重启导航节点后生效，rqt 运行时窗口不用于更换控制器或
+  永久保存此基线。
+- 当时正在运行的 `controller_server` 修改前仍回读 `0.15 rad`；确认无活动
+  目标后，已在线设置为 `0.10 rad` 并回读成功。这只让当前进程立即与
+  YAML 一致；永久基线仍由已修改的 `navigation.yaml` 提供。
+- 收紧后的可观察预期是：旧基线中 MPPI 停稳后 `0.155 rad` 不再
+  达标，控制器必须继续缩小 yaw 误差到 `0.10 rad` 内。如果出现连续
+  正负换向、非零线速度踱步或定位单步修正超过 `0.10 m/rad`，应停止
+  继续收紧，分别回到 MPPI/RPP 终点控制、CHAMP 落足或 AMCL 链路诊断。
+
+### 验证与剩余边界
+
+- `test_controller_profiles.py` 与 `test_rotation_diagnostics.py` 合计 36 项
+  pytest 全部通过；`go2_navigation` 以 `--symlink-install` 重建成功，
+  YAML 回读确认普通容差为 `0.30 m/0.10 rad`，
+  `cmp -s AGENTS.md CLAUDE.md` 通过。
+- 重启后应分别用 `forward_mppi` 与 `forward_rpp` 复测同 XY 大 yaw、
+  短直线、90° 转弯、长走廊与返回起点。未完成这组重启后实跑前，
+  不宣称 `0.10 rad` 已消除终点踱步，也不宣称某个控制器已最优。
+
+## 2026-08-25 源码职责分层、动态高度窗与新在线建图会话
+
+### 源码整理与边界
+
+- `simdog/src` 已从 14 个扁平顶层目录整理为 `go2/`、`platform/`、
+  `localization/`、`vendor/` 四个职责组；ROS 包名、话题、Action、启动文件和公开接口均未
+  改名。新增 `simdog/src/README.md`，集中说明 25 个包的职责、数据/控制链和维护边界。
+- 跨包硬编码路径、测试夹具、GPU 验证脚本和活跃文档均已更新到新目录；
+  `colcon list` 仍递归识别 25 个包，旧扁平 `simdog/src/<包名>` 引用为 0。
+  `AGENTS.md` 与 `CLAUDE.md` 已同步，并通过 `cmp -s`。
+- 分层依据为 colcon 官方的递归包发现机制；点云投影和参数行为参考 ROS 2 Humble 参数文档
+  与 `ros-perception/pointcloud_to_laserscan` 上游。未引入新第三方代码；已有
+  `vendor/pointcloud_to_laserscan` 继续保留上游 BSD-3-Clause 许可证和小补丁边界。
+
+### `/scan` 动态高度窗
+
+- 正式转换器仍先把点云变换到重力对齐的 `velodyne_level`，再按
+  `min_height/max_height` 切片；默认值现为用户完成地图会话后明确要求固化的
+  `0.48..0.60 m`。
+- 两个运行时参数新增中文物理含义和浮点范围描述，rqt 滑块为
+  `-0.50..1.50 m`、步长 `0.01 m`。范围用于排障，不是推荐工作区间；回调继续要求数值有限
+  且 `min_height < max_height`，每帧扫描在互斥锁下使用同一组高度快照。
+- GUI 在线栈中曾实测把窗口从 `0.20..0.30` 改为 `0.21..0.31` 成功并可回读；尝试在
+  `max_height=0.31` 时设置 `min_height=0.40`，节点明确返回
+  `必须满足 min_height < max_height` 并保留 `0.21`。这是动态参数回调的历史证据，
+  不再代表当前默认值。
+- 运行态 `/scan` 只有一个发布者 `go2_lidar_scan_converter`，frame 为
+  `velodyne_level`，10 秒采样约 `7.24..7.44 Hz`；在线导航健康检查 PASS。
+- GUI 联调日志中 Slam Toolbox 偶发两次 `Message Filter ... queue is full`；它表示高负载时
+  少消费了扫描帧，不会凭空生成地面端点，与“错误高度点被投影进地图”的幽灵代价根因要分开
+  观察。当前频率仍达到项目 `>=7 Hz` 的联调门槛，长期压力与完整覆盖仍待后续验收。
+
+### 构建、测试与当前运行状态
+
+- 删除旧生成物后执行 `bash scripts/build_workspaces.sh` 的干净构建；22 个基础包、
+  `sm_120` CUDA `fast_gicp`、`ndt_relocalization` 与最后的 `go2_navigation` 全部成功。
+  编译仅有既有 PCL/CUDA/Eigen、CMake policy 和 LTO 警告，无失败项。
+- `go2_lidar_scan`、`go2_navigation`、`go2_unitree_sim_bridge` 合计 126 项 pytest 通过。
+- 已以 `navigation_mode:=online_slam map_session:=new controller_profile:=forward_mppi`
+  启动 GUI Gazebo、RViz、rqt 和全套安全链。当前是全新空白 pose graph；尚未人工走遍场景、
+  保存地图或执行固定 AMCL 回放，因此不能把本轮写成完整地图验收通过。
+- 本轮自动打开的键盘终端无法控制并非安全锁或控制器故障：现场 `/pause_navigation=false`，
+  两个关节控制器均为 active，但 `/cmd_vel_teleop` 发布者为 0。进程环境核对确认导航栈由
+  `setup_simdog.bash` 的系统默认 Fast DDS 启动，而键盘加载了
+  `setup_unitree_sim.bash` 的 CycloneDDS + `lo`，两者处于不同 DDS 发现图。让键盘临时匹配
+  当前 Fast DDS 环境后，节点可见、`/cmd_vel_teleop` 发布者为 1，按 `k` 实测收到零速
+  `Twist`。临时键盘已关闭，导航栈保留运行；今后应让导航和键盘两个终端都加载
+  `setup_unitree_sim.bash`。
+- 用户完成在线地图覆盖后，运行态诊断为 `/scan=10.01 Hz`、重力对齐和同时戳
+  TF 成功率均为 `1.000`、`invalid_bins=0`、静止帧跳变率为 0。当前 rqt 高度窗
+  `0.48..0.60 m` 对高墙场景可以成图，但画面墙外仍有离群点，且未验证低障碍物。
+  用户在保存后明确要求重启继续使用，因此 YAML 默认和诊断期望值均固化为
+  `0.48..0.60 m`；当前运行节点也按 `max` 后 `min` 的顺序在线设置成功。诊断回读
+  `/scan=10.00 Hz`、高度 `0.480..0.600 m`、TF 成功率 `1.000`、`invalid_bins=0`；
+  定向配置/RViz 测试 12 项通过。低障碍防撞仍必须单独验收。
+- `forward_mppi` 的 `vx_min=0.0`原本又把共享 `velocity_smoother.min_velocity.x`
+  设为 0，导致键盘倒车被误裁掉。现将“自主只向前采样”保留在 MPPI，共享
+  smoother 按 CHAMP gait 边界固定为 `[-0.30..0.30 m/s]` 和
+  `[-0.50..0.50 rad/s]`，使键盘/Unitree Move 能在安全链内对称倒车。
+- `my_world_full_v1` 已成功生成 `790×757 @ 0.05 m/pix` 的 `map.pgm/map.yaml`
+  与约 40 MB `slam.posegraph/slam.data`。源码分层后 `save_online_map.sh` 少回退
+  一层，首次误写到 `simdog/go2_maps`；已修正它与 `save_map.sh` 的项目根/工作空间
+  路径，并将会话迁回根目录 `go2_maps/online/my_world_full_v1`。迁移前后五个文件
+  SHA-256 一致，`go2_maps/online/latest` 已指向该会话；旧空目录已移除。
+- 上述路径、速度与文档修正后重新执行 `bash scripts/build_workspaces.sh`：
+  22 个基础包、CUDA 12.8/`sm_120` `fast_gicp`、`ndt_relocalization` 和最后的
+  `go2_navigation` 均构建成功。`fast_gicp` 仅有既有 pcap 功能未启用警告，
+  `ndt_relocalization` 仅有分阶段 overlay 覆盖提示，无失败项。
+- 固定 AMCL 启动现场核对：`map_server` 与 `amcl` 均为 `active [3]`，
+  `yaml_filename` 正确指向根目录 `my_world_full_v1/map.yaml`，`/map` 有且仅有
+  `map_server` 一个 transient-local 发布者，地图消息 `frame_id=map`。画面不显示的直接原因是
+  尚未发布 `/initialpose`，AMCL 因而尚无 `map→odom`；RViz 又在运行界面被切到
+  `Fixed Frame=base_link`。应在可编辑的 Fixed Frame 值栏直接输入 `map`，再用
+  `2D Pose Estimate` 发布初始位姿；不应误判为地图文件或 map_server 加载失败。
+
+## 2026-08-24～25 当前电脑完整部署、CUDA NDT 与在线导航闭环
+
+### 环境核对与构建修复
+
+- 当前机器实测为 Ubuntu 22.04.5、ROS 2 Humble、Gazebo Classic 11.10.2；
+  `nvidia-smi` 读取到 `NVIDIA GeForce RTX 5070`、显存 `12227 MiB`、compute
+  capability `12.0`、驱动 `595.84`。用户完成管理员依赖安装后，CUDA 编译器为
+  12.8.93，Nav2、`twist_mux`、`ecl_threads` 和 Open3D 均已安装。
+- NVIDIA CUDA 12.8 Release Notes 明确列出 `SM_120` 编译支持；构建脚本不再
+  硬编码 RTX 4060 的 `sm_89`，而是从 `nvidia-smi` 读取目标 GPU compute
+  capability，也可用 `GO2_CUDA_ARCHITECTURE` 显式覆盖。只参考官方架构说明，
+  未引入第三方代码或新增许可证风险。
+- 全新工作区首次构建确认原脚本存在依赖顺序错误：先跳过
+  `fast_gicp/ndt_relocalization`，却在它们之前构建依赖二者的
+  `go2_navigation`。现改为“22 个基础包 → `fast_gicp` →
+  `ndt_relocalization` → `go2_navigation`”，随后 25 个包全部构建成功。
+- CUDA 全量重建日志明确选择 `sm_120`；`fast_gicp`、`ndt_relocalization` 与
+  `go2_navigation` 均成功构建，工作区 25 包完整可用。OpenMP CPU NDT 回退仍保留。
+
+### 已实测闭环
+
+- 使用 CycloneDDS 回环接口、隔离 Domain 137、`gui:=false rviz:=false` 启动
+  `go2_config gazebo_velodyne.launch.py`。Go2 成功生成，
+  `joint_states_controller` 与 `joint_group_effort_controller` 均为 `active`。
+- 实测 `/velodyne_points≈8.0 Hz`、`/imu/data≈158 Hz`、
+  `/joint_states≈200 Hz`、`/sportmodestate≈13.5 Hz`；`/odom`、`/lowstate` 和
+  Unitree bridge 均有有效消息。频率低于历史空闲基线时，机器同时存在其他高 CPU
+  编译负载，本轮只将其作为链路在线证据，不作为性能验收。
+- 向 `/cmd_vel` 以 10 Hz 发布 `0.15 m/s` 前进命令 3 秒并归零。Gazebo 世界真值
+  `x=3.0584→3.2042 m`，实际前进 `0.1458 m`，证明
+  `cmd_vel → CHAMP → ros2_control → Gazebo → 状态反馈` 闭环成立。
+- `/go2_behaviors/hello` 返回 `success=True`，关节轨迹完成后动力学检查通过并恢复
+  CHAMP。统一 `Ctrl+C` 后 `gzserver` 和核心节点干净退出；`contact_sensor` 复现既有
+  Boost recursive mutex assertion，仅发生在关停阶段。
+- 隔离 Domain 首次误用 237 时，CycloneDDS 计算出 UDP 端口 66660 并拒绝创建节点；
+  改用 137 后正常。后续隔离验证应选不会使 DDS 端口超过 65535 的 Domain。
+
+### CUDA NDT 与统一在线导航验收
+
+- `bash scripts/verify_gpu_runtime.sh` 在隔离 Domain 181 通过：CUDA NDT 明确启用
+  RTX 5070 compute 12.0，三级多分辨率对象创建成功，NDT 进程使用约 170 MiB
+  计算显存，采样峰值 10%，并以仓库真实 PCD 发布有限值 `/ndt_pose`。脚本同时验证
+  NDT 节点链接 CUDA Runtime/`libfast_vgicp_cuda.so` 且 CUDA 库含 `sm_120`。
+- 隔离 Domain 139、`gui:=false rviz:=false map_session:=new` 启动统一
+  `online_slam` 栈。`planner_server`、`controller_server`、`bt_navigator` 均为
+  `active [3]`，健康检查使用 `--expected-domain-id 139` 为 PASS。
+- 新空图中首次 `(0.47, 0.0)` 与 `(0.20, 0.006)` 目标因目标/当前位姿尚未成为已知
+  自由栅格而被门禁明确拒绝。地图探针确认左前 45° 是连续已知自由区后，目标
+  `(0.43, 0.36, yaw=45°)` 被接受；日志显示
+  `SmacPlanner2D → SmoothPath → MPPI` 多次全局重规划并最终 `Goal succeeded`。
+- 导航前 `map -> base_footprint≈(0.13, 0.01, yaw≈0°)`，结束后稳定为
+  `(0.303, 0.122, yaw=44.76°)`；Gazebo 世界真值为
+  `(3.290, 0.161, yaw≈44.8°)`。普通目标容差为 0.30 m，因此进入容差即成功，
+  不要求精确到用户目标坐标。目标后健康检查继续 PASS，并调用 `/navigation/stop`
+  锁存暂停、取消全部目标后退出。
+- 联调发现 `goal_guard` 与 Unitree bridge 在 Humble rclpy/TF 同步关停时可能分别抛出
+  `RuntimeError`/`TypeError`。两者现仅在 `rclpy` context 已关闭时吞掉异常，运行态异常
+  继续上抛；重新启动/关停实测二者均干净退出。`go2_navigation` 100 项测试通过，
+  Unitree bridge 直接 pytest 为 11 项通过。
+
+### 验证边界与后续
+
+- 本轮已经完成基础四足、行为、CUDA NDT 和一个在线 SLAM 短目标闭环；未执行 GUI/RViz
+  人工观察、10 分钟压力、移动障碍、地图保存、固定 AMCL 回放或正式 PCD 场景 NDT。
+- `contact_sensor` 在统一 Ctrl+C 时仍复现既有 Boost recursive mutex assertion；
+  `gzserver`、Nav2、`goal_guard`、Unitree bridge 和其余核心节点均干净退出。该 assertion
+  只记录为关停残余，不影响已完成运行验收，也不写成已修复。
 
 `go2_navigation` 当前以统一入口提供两条互斥闭环：默认
 `online_slam` 使用 Slam Toolbox 边建图边导航；`static_map` 默认以 AMCL 在固定二维图
@@ -31,11 +232,11 @@ SmacPlanner2D + SmoothPath + MPPI（DiffDrive，默认）/Rotation Shim+RPP（�
 Inflation/Depth/Persistence 与重复碰撞安全门仍 FAIL，不能把 SLAM 输入通过描述为完整
 近距防撞闭环。
 
-Global Costmap 当前按用户要求使用 `inflation_radius=0.20 m`、
+Global Costmap 当前按用户要求使用 `inflation_radius=0.50 m`、
 `cost_scaling_factor=0.5`；Local Costmap 保持 `0.30 m/3.0`。用户最新反馈是幽灵代价
 区域已基本不再出现，偶尔只在很远处出现。当前判定为“主要现象基本解决、远处残余待继续
-取证”，不是绝对根治；全局膨胀缩小只改变错误端点周围的代价外观和规划影响，不能消除
-端点本身。
+取证”，不是绝对根治；全局膨胀只改变错误端点周围的代价外观和规划影响，不能消除端点
+本身。当前 `0.50 m/0.5` 组合尚待重启后的规划 A/B 验证。
 
 `go2_navigation` 现提供 `ros2 run go2_navigation nav_tuner` 统一运行时调参和监控入口。
 72 个参数别名明确区分 `LIVE`、`LIFECYCLE RELOAD` 和 `RESTART REQUIRED`；
@@ -244,7 +445,7 @@ costmap 的实际发布轮廓。
 
 ### 实际改动
 
-- 新建 `simdog/src/go2_lidar_scan/`，提供唯一参数源 `config/vlp16_scan.yaml`、独立
+- 新建 `simdog/src/go2/go2_lidar_scan/`，提供唯一参数源 `config/vlp16_scan.yaml`、独立
   `simulation_scan_debug.launch.xml`、RViz 配置、`/diagnostics` 与中文
   `/go2_lidar_scan/markers`。诊断区分有限有效值、`+inf`、NaN/负无穷/越量程值，并只在
   里程计静止时判断相邻帧跳变；完整负载的超时门先宽松设为 `1.0 s`。
@@ -276,7 +477,7 @@ costmap 的实际发布轮廓。
 - 2 m、`0.3×0.3×0.5 m` 方块 10/10 帧检出，误差 p95 `0.0030 m`、无接触；方块删除后
   Local Costmap lethal 格由背景约 `227` 升至 `237`，约 `6.1 s` 回落到 `226` 并保持
   `225–228`，未见残留。原始探针数据保存在
-  `simdog/src/go2_lidar_scan/logs/clearing_smoke_20260822/`。
+  `simdog/src/go2/go2_lidar_scan/logs/clearing_smoke_20260822/`。
 
 ### 未完成与安全边界
 
@@ -380,7 +581,7 @@ costmap 的实际发布轮廓。
 ### 验证命令
 
 ```bash
-cd simdog/src/go2_navigation && python3 -m pytest test/test_controller_profiles.py
+cd simdog/src/go2/go2_navigation && python3 -m pytest test/test_controller_profiles.py
 cmp -s AGENTS.md CLAUDE.md
 ```
 
@@ -433,7 +634,7 @@ cmp -s AGENTS.md CLAUDE.md
    持续可见的位置。该门 PASS 前不做自主移动碰撞测试。
 
 完整证据等级、CLI/RViz 操作和阶段交接见
-`simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。本轮只记录和诊断，
+`simdog/src/go2/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。本轮只记录和诊断，
 未修改运行参数。
 
 ## 2026-08-14 固定 AMCL 足迹显示与验证回归
@@ -928,7 +1129,7 @@ Gazebo 与真机间复用官方消息和话题，但不承诺真机固件行为�
 统一入口：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash scripts/install_dependencies.sh
 bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
@@ -1022,7 +1223,7 @@ source scripts/setup_simdog.bash
 
 ### 实际操作
 
-- 新增 `simdog/src/go2_navigation`（ament_python）：
+- 新增 `simdog/src/go2/go2_navigation`（ament_python）：
   - `go2_navigation/build_map_bundle.py`：`GlobalMap.pcd` → `map.yaml/pgm` +
     `map_bundle.yaml`（SHA-256 清单），支持 `--x-min/--x-max/--y-min/--y-max`
     裁剪聚焦导航区域、`--obstacle-height-m`、`--min-points-per-cell`。
@@ -1196,7 +1397,7 @@ test "$(cd simdog && colcon list | wc -l)" -eq 21
 colcon build --symlink-install --packages-select \
     unitree_api unitree_go go2_behaviors go2_unitree_sim_bridge go2_config
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
-    simdog/src/go2_unitree_sim_bridge/test  # 本机 anyio 插件加载 _pytest.scope 失败，必须禁用自动加载
+    simdog/src/go2/go2_unitree_sim_bridge/test  # 本机 anyio 插件加载 _pytest.scope 失败，必须禁用自动加载
 python3 -m py_compile <新增及修改的 Python 文件>
 bash -n scripts/setup_unitree_sim.bash scripts/setup_unitree_real.bash simdog/start.sh
 ```
@@ -1253,7 +1454,7 @@ Gazebo master 下，两个控制器、行为服务端和桥接全部启动，四
 
 ### 实际操作
 
-- 新增 `simdog/src/go2_behaviors` ament Python 包和统一命令：
+- 新增 `simdog/src/go2/go2_behaviors` ament Python 包和统一命令：
 
   ```bash
   ros2 run go2_behaviors go2_behavior \
@@ -1283,7 +1484,7 @@ Gazebo master 下，两个控制器、行为服务端和桥接全部启动，四
 
 ```bash
 python3 -m py_compile \
-    simdog/src/go2_behaviors/go2_behaviors/behavior_runner.py
+    simdog/src/go2/go2_behaviors/go2_behaviors/behavior_runner.py
 colcon build --symlink-install --packages-select champ_base go2_behaviors
 cmp -s AGENTS.md CLAUDE.md
 test "$(cd simdog && colcon list | wc -l)" -eq 18
@@ -1485,16 +1686,16 @@ TF 动态主链：map -> odom -> base_footprint -> base_link
 ```bash
 # 确认所有翻译文件存在且非空
 for f in \
-  simdog/src/unitree-go2-ros2/README.md \
-  simdog/src/LIO-SAM/README.md \
-  simdog/src/pointcloud_to_laserscan/README.md \
-  simdog/src/realsense_ros_gazebo/README.md \
-  simdog/src/ndt_omp_ros2/README.md \
-  simdog/src/fast_gicp/README.md \
-  simdog/src/unitree-go2-ros2/champ/README.md \
-  simdog/src/unitree-go2-ros2/champ_teleop/README.md \
-  simdog/src/unitree-go2-ros2/robots/README.md \
-  simdog/src/unitree-go2-ros2/champ/champ/include/champ/README.md; do
+  simdog/src/platform/unitree-go2-ros2/README.md \
+  simdog/src/localization/LIO-SAM/README.md \
+  simdog/src/vendor/pointcloud_to_laserscan/README.md \
+  simdog/src/vendor/realsense_ros_gazebo/README.md \
+  simdog/src/vendor/ndt_omp_ros2/README.md \
+  simdog/src/vendor/fast_gicp/README.md \
+  simdog/src/platform/unitree-go2-ros2/champ/README.md \
+  simdog/src/platform/unitree-go2-ros2/champ_teleop/README.md \
+  simdog/src/platform/unitree-go2-ros2/robots/README.md \
+  simdog/src/platform/unitree-go2-ros2/champ/champ/include/champ/README.md; do
   wc -l "$f"
 done
 ```
@@ -1531,8 +1732,9 @@ done
 NVIDIA GeForce RTX 4060 Laptop GPU, 595.84, 8188 MiB, compute 8.9
 ```
 
-因此本机不是 RTX 5070。当前 CUDA 工具链为 12.8，`fast_gicp` 构建架构为
-`sm_89`。
+这是 2026-08-06 当时的旧硬件基线：当时不是 RTX 5070，CUDA 工具链为 12.8，
+`fast_gicp` 构建架构为 `sm_89`。2026-08-24 的当前 RTX 5070 基线见本文件顶部，
+不要再把本段旧记录用于当前构建。
 
 ### 本阶段验证
 

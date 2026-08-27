@@ -21,15 +21,16 @@
 当前电脑已实际检测为：
 
 ```text
-GPU：NVIDIA GeForce RTX 4060 Laptop GPU
-显存：8188 MiB
-计算能力：8.9
+GPU：NVIDIA GeForce RTX 5070
+显存：12227 MiB
+计算能力：12.0
 驱动：595.84
-CUDA：12.8
-GPU NDT 架构：sm_89
+CUDA：12.8.93
+GPU NDT 架构：sm_120（已实测）
 ```
 
-本机不是 RTX 5070。只有 NDT 点云配准使用 CUDA 计算；Gazebo/RViz2 使用 GPU
+当前部署已生成并实测 `sm_120` GPU NDT，同时保留 OpenMP CPU 回退。只有 NDT
+点云配准使用 CUDA 计算；Gazebo/RViz2 使用 GPU
 进行 OpenGL 渲染，Gazebo 物理、CHAMP、LIO-SAM 的 GTSAM 图优化和大部分 PCL
 预处理仍主要运行在 CPU 上。
 
@@ -39,19 +40,11 @@ GPU NDT 架构：sm_89
 .
 ├── simdog/                         # 唯一 ROS 2 colcon 工作空间
 │   ├── src/
-│   │   ├── go2_behaviors/          # 打招呼、点头、伸展等仿真动作
-│   │   ├── go2_lidar_scan/          # VLP-16 点云转 /scan、诊断与独立 RViz
-│   │   ├── go2_navigation/         # 自主导航包（同源地图包、Nav2、安全链）
-│   │   ├── lidar_localization_ros2/ # NDT/GICP 实验定位库
-│   │   ├── go2_unitree_sim_bridge/ # Unitree Sport API 仿真兼容桥
-│   │   ├── unitree_ros2_interfaces/ # 固定的官方 v0.3.0 消息接口
-│   │   ├── unitree-go2-ros2/       # Go2、CHAMP、ros2_control、Gazebo
-│   │   ├── LIO-SAM/                # 激光惯性建图
-│   │   ├── ndt_relocalization/     # NDT 重定位节点
-│   │   ├── fast_gicp/              # CUDA 点云配准
-│   │   ├── ndt_omp_ros2/           # OpenMP CPU 配准
-│   │   ├── realsense_ros_gazebo/   # RealSense 仿真
-│   │   └── pointcloud_to_laserscan/
+│   │   ├── README.md               # 包职责、数据链与维护边界索引
+│   │   ├── go2/                    # 本项目功能、集成与安全链
+│   │   ├── platform/               # Go2/CHAMP/Gazebo/Unitree 接口
+│   │   ├── localization/           # LIO-SAM、NDT/GICP 定位实验
+│   │   └── vendor/                 # 通用上游传感器与配准组件
 │   ├── start.sh                    # 多终端启动入口
 │   └── save_Map.sh                 # LIO-SAM 地图保存
 ├── scripts/
@@ -75,7 +68,7 @@ GPU NDT 架构：sm_89
 从项目根目录执行：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash scripts/install_dependencies.sh
 bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
@@ -85,8 +78,10 @@ bash scripts/build_workspaces.sh
 LIO-SAM 依赖和 GTSAM 4.1。GPU 脚本从 NVIDIA 官方软件源安装 CUDA 12.8
 编译器和最小运行库，不替换现有显卡驱动。
 
-构建脚本检测到 CUDA 12.8 时，会为 RTX 4060 构建 `sm_89` GPU NDT；未检测到
-CUDA 时构建 OpenMP CPU 回退版本。
+构建脚本检测到 CUDA 12.8 时，会从 `nvidia-smi` 读取目标 GPU 的 compute
+capability 并构建对应架构（本机 RTX 5070 为 `sm_120`）；未检测到 CUDA 时构建
+OpenMP CPU 回退版本。CUDA 12.8 对 `SM_120` 的编译支持见
+[NVIDIA CUDA 12.8 Release Notes](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html)。
 
 ## 加载工作空间
 
@@ -129,7 +124,7 @@ source scripts/setup_unitree_real.bash enp3s0
 终端一：启动 Gazebo、完整四足控制器、传感器和基础 RViz2。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch go2_config gazebo_velodyne.launch.py gui:=true rviz:=true
 ```
@@ -137,7 +132,7 @@ ros2 launch go2_config gazebo_velodyne.launch.py gui:=true rviz:=true
 终端二：启动 LIO-SAM 建图和建图 RViz2。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch lio_sam lidar.launch.py rviz:=true
 ```
@@ -146,7 +141,7 @@ ros2 launch lio_sam lidar.launch.py rviz:=true
 `k` 再关闭节点。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
@@ -154,7 +149,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 完成巡视后，在**仍保持终端二 LIO-SAM 运行**的情况下另开终端四保存地图：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash simdog/save_Map.sh
 test -s "$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd" && echo "地图保存成功"
 ```
@@ -176,7 +171,7 @@ bash simdog/save_Map.sh "$GO2_PROJECT_ROOT/go2_maps/warehouse" 0.2
 终端一：启动 Gazebo、完整四足控制器和传感器。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true
 ```
@@ -184,7 +179,7 @@ ros2 launch go2_config gazebo_velodyne.launch.py rviz:=true
 终端二：启动 LIO-SAM，但让出 `map -> odom`。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false
 ```
@@ -192,7 +187,7 @@ ros2 launch lio_sam lidar.launch.py rviz:=true publish_map_to_odom:=false
 终端三：启动 CUDA NDT 重定位。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
     map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
@@ -202,7 +197,7 @@ ros2 launch ndt_relocalization ndt_localization.launch.py \
 终端四：按需启动键盘遥控。
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
@@ -275,7 +270,7 @@ ros2 run go2_behaviors go2_behavior stand
 不等同于真机固件中的 Unitree Sport API 动作，不能直接用于真机。
 
 实现与开源复用说明见
-[`go2_behaviors/README.md`](simdog/src/go2_behaviors/README.md)。
+[`go2_behaviors/README.md`](simdog/src/go2/go2_behaviors/README.md)。
 
 ## Unitree ROS 2 兼容桥
 
@@ -306,7 +301,7 @@ ros2 launch go2_config gazebo_velodyne.launch.py unitree_bridge:=false
 模拟器错误码为 `-32001` 参数错误、`-32002` 不支持、`-32003` 忙和
 `-32004` 下游失败。响应复制请求 `identity`，`noreply=true` 时不响应。
 更完整的字段映射、服务入口和边界见
-[`go2_unitree_sim_bridge/README.md`](simdog/src/go2_unitree_sim_bridge/README.md)。
+[`go2_unitree_sim_bridge/README.md`](simdog/src/go2/go2_unitree_sim_bridge/README.md)。
 
 ## 建图与地图保存
 
@@ -352,7 +347,7 @@ ros2 launch ndt_relocalization ndt_localization.launch.py \
 ```bash
 # 建图并生成同源地图包
 ros2 launch go2_navigation mapping.launch.xml
-bash simdog/src/go2_navigation/scripts/save_map.sh $GO2_PROJECT_ROOT/go2_maps/latest
+bash simdog/src/go2/go2_navigation/scripts/save_map.sh $GO2_PROJECT_ROOT/go2_maps/latest
 
 # 只由已有 GlobalMap.pcd 重建地图包（支持裁剪到导航区域）
 ros2 run go2_navigation build_map_bundle --map-dir $GO2_PROJECT_ROOT/go2_maps/latest \
@@ -402,10 +397,10 @@ XY 只改变 yaw 也必须先得到一条新路径。Smac 的 `GridBased.toleran
 `/received_global_plan`，可用来区分“原始路线”与“实际跟随路线”。
 
 `forward_rpp` 对照档由外层 Rotation Shim 包裹 RPP：进入 `0.30 m` XY 容差后保持
-`linear.x=0`，以 `0.45 rad/s`、最大 `1.0 rad/s²` 对齐到 `0.15 rad` yaw；shim 参数为
+`linear.x=0`，以 `0.45 rad/s`、最大 `1.0 rad/s²` 对齐到 `0.10 rad` yaw；shim 参数为
 `rotate_to_goal_heading=true`、`closed_loop=false`、路径进入/退出阈值
 `1.40/0.40 rad`、采样距离 `0.50 m`、旋转碰撞预测 `1.0 s`，内层 RPP 的
-`use_rotate_to_heading=false`。普通到达标准为 `0.30 m/0.15 rad`。`closed_loop=false`
+`use_rotate_to_heading=false`。普通到达标准为 `0.30 m/0.10 rad`。`closed_loop=false`
 只表示 shim 按角加速度约束生成命令，不把当前仿真里程计的 1 秒角速度窗口当成低延迟
 反馈，并不是关闭姿态闭环；目标 yaw 仍由 TF 和 GoalChecker 闭环判定。不应通过放宽
 yaw 或关闭碰撞保护解决终点摆动。可这样回读当前控制器插件与参数：
@@ -433,7 +428,7 @@ timeout 5 ros2 topic pub -r 20 /cmd_vel_teleop geometry_msgs/msg/Twist \
 # 单个导航目标开始前运行；它不发布速度或目标
 ros2 run go2_navigation rotation_diagnostics \
     --mode navigation --acquire-timeout 120 --duration 10 \
-    --xy-tolerance 0.30 --yaw-tolerance 0.15
+    --xy-tolerance 0.30 --yaw-tolerance 0.10
 ```
 
 Goal Guard 会把已接受的原始 RViz 目标以 transient-local QoS 发布到只读话题
@@ -508,7 +503,7 @@ ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
 RViz 中应看到 `Velodyne 3D Points`、橙色 `Leveled Navigation Scan`、洋红色
 `Raw Tilting Scan` 和中文 `Scan Health`；该入口与完整导航都会发布 `/scan`，二者不能
 同时运行。完整三终端顺序、各 Display 含义、预期结果和失败分支见
-[go2_lidar_scan 使用说明](simdog/src/go2_lidar_scan/README.md)。
+[go2_lidar_scan 使用说明](simdog/src/go2/go2_lidar_scan/README.md)。
 先前完整运动 A/B 在机身倾斜 `5.15°` 时得到“原始切片 4430、重力对齐 0 个地面
 获胜端点”，240 个采样点云 TF 全部成功，`/scan=8.89 Hz`，`map→odom` 最大单步
 `0.0224 m/0.00698 rad`，只证明该批样本的倾斜地面端点门 PASS。人工在线复测仍出现
@@ -525,7 +520,7 @@ RViz 中应看到 `Velodyne 3D Points`、橙色 `Leveled Navigation Scan`、洋�
 结束时使用：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
+bash simdog/src/go2/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 该脚本保存的 `map.yaml/map.pgm` 可直接作为固定 AMCL 地图；AMCL 不要求三维 PCD。
@@ -559,11 +554,12 @@ ros2 service call /navigation/stop std_srvs/srv/Trigger "{}"
 ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 ```
 
-当前 Global Costmap 的现场基线为 `inflation_radius=0.20 m`、
+当前 Global Costmap 的现场基线为 `inflation_radius=0.50 m`、
 `cost_scaling_factor=0.5`；Local Costmap 保持 `0.30 m/3.0`。配合正式雷达高度窗
 `0.20..0.30 m` 后，用户反馈幽灵代价区域已基本不出现，偶尔只在远处看到残余。高度窗
-负责减少错误输入端点，全局膨胀参数只控制每个端点周围代价扩散的范围与梯度，不能把
-远处残余描述为已从输入端彻底消失。
+负责减少错误输入端点，全局膨胀参数只控制每个端点周围代价扩散的范围与梯度。当前较宽、
+缓慢衰减的全局代价带会让路径更早远离墙面，也可能封住窄通道；不能把远处残余描述为
+已从输入端彻底消失。
 
 2026-08-22 已修复 `/scan` 空射线 clearing 契约：无回波恢复为 `+inf`，local/global
 source 都启用 `inf_is_valid=true`，并使用 `obstacle_max_range=14.0 m <
@@ -575,7 +571,7 @@ raytrace_max_range=15.0 m`。最终 2 m 方块的 scan/Velodyne 各 3×30 帧检
 stop/decel zone 仍位于 LiDAR 近距盲区内，因此系统级障碍安全门仍为 **FAIL**，三个
 profile 仍为 `UNCALIBRATED`。不得把本次 clearing PASS 误写成近距防撞已通过。证据和
 后续门禁见
-[幽灵障碍与近距碰撞调查](simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md)。
+[幽灵障碍与近距碰撞调查](simdog/src/go2/go2_navigation/docs/costmap_ghost_obstacle_investigation.md)。
 
 同日运动复测实测出白色放射线的一条输入成因：机身原地转向倾斜 `4–6°` 时，旧坐标
 高度切片会让地面成为最近端点；最终样本旧投影为 4430 个地面获胜格，重力对齐后为 0。

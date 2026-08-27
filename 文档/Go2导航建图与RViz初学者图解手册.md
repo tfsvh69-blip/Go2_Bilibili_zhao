@@ -199,6 +199,13 @@ ros2 topic info -v /map
 散点或膨胀色块不是静态 `map.pgm` 本身。判断底图是否有噪声，应直接查看对应
 `map.pgm`，或只保留 `Static Map` Display。
 
+固定 AMCL 刚启动时还没有初始位姿，所以 `map→odom` 可能暂时不存在。如果
+RViz 被切到 `Fixed Frame=base_link` 后 `Static Map` 变红，在左侧
+`Global Options → Fixed Frame` 的值栏中直接键入 `map` 并回车；该框可编辑，
+不必等下拉列表出现 `map`。地图显示后点顶部 `2D Pose Estimate`，在地图上
+按住鼠标并拖出与 Gazebo 实体一致的朝向。AMCL 收到 `/initialpose` 后才发布
+`map→odom`，此时 RobotModel、Static Map 和 Costmap 才会进入同一坐标树。
+
 在线模式的 `map_session:=new` 含义不同：它创建空白 pose graph，不会加载上述任意
 旧地图；只有显式传入会话目录时才会续建：
 
@@ -290,7 +297,7 @@ ros2 launch go2_navigation simulation_navigation.launch.xml \
 项目保存命令：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
+bash simdog/src/go2/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 ![地图保存终端](images/rviz_guide/map_save_terminal.png)
@@ -298,7 +305,11 @@ bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 终端中 `waiting for service to become available...` 表示脚本正在等待保存服务被 ROS 发现，不等于保存已经成功。必须等它继续输出四个阶段成功，并确认目录中同时存在
 `map.pgm/map.yaml`、`slam.posegraph/slam.data` 和 `session.yaml`，再关闭建图节点。
 
-正式建图先保持当前 `min_height=0.20 m`、`max_height=0.30 m`。键盘驾驶不要只绕外墙：
+当前仿真正式高度窗为用户完成在线覆盖、保存 `my_world_full_v1` 后明确
+要求固化的 `min_height=0.48 m`、`max_height=0.60 m`。它能避开当前场景的地面幽灵
+端点，但同一 `/scan` 还供 Collision Monitor 使用；该结果只验证高墙成图，
+低障碍物检出和近场防撞仍是后续实验。
+键盘驾驶不要只绕外墙：
 先沿外圈走一圈，再用平行往返路线覆盖内部，绕主要障碍物一圈，最后回到起点附近形成
 闭环并静止 5–10 秒。只有 `Live SLAM Map` 的墙线单层清楚、计划导航区域为连续白色、
 没有从机器人向外发散的白线时才保存。目录命名建议用
@@ -475,7 +486,7 @@ AMCL 的粒子可以想成一群侦察员：每个侦察员猜一个位置，拿
 | MPPI | 基于采样预测的模型预测路径积分控制器 | `forward_mppi`/`omni_mppi` 对照档 |
 | Behavior Tree / BT | 按条件组织规划、跟随、恢复和取消 | `bt_navigator` |
 | Recovery | 主导航失败后的恢复行为 | 清图、旋转、后退、等待等 |
-| Goal Checker | 判定是否已到目标 | 普通档 0.30 m / 0.15 rad |
+| Goal Checker | 判定是否已到目标 | 普通档 0.30 m / 0.10 rad |
 | PoseProgressChecker | 判定平移或转向是否取得进展 | 0.10 m 或 0.15 rad 任一达到即刷新 |
 | TerminalPathLatch | 进入终点 XY 容差后冻结当前目标的路径 | 防止 1 Hz `setPlan()` 重置 shim；新目标仍重规划 |
 | Tolerance | 容许误差 | 不是越小越好；小于四足落足波动会在终点反复修正 |
@@ -494,7 +505,7 @@ RViz `Nav2 Goal` 拖出的箭头同时包含：
 - yaw：狗最后应该朝哪个方向。
 
 只点击不正确拖方向，可能出现“位置到了但一直转”的现象。普通目标容差
-`0.30 m / 0.15 rad` 表示允许站位约差 30 cm、方向约差 8.6°。
+`0.30 m / 0.10 rad` 表示允许站位约差 30 cm、方向约差 5.7°。
 
 ### `Failed to make progress`
 
@@ -577,7 +588,7 @@ tick 10 次只执行 1 次规划。这样才真正避免 Humble Rotation Shim �
 | `forward_sampling_distance` | `0.50 m` | 用前方半米路径判断朝向 | 太短受局部折线影响，太长可能忽略近处弯道 |
 | `simulate_ahead_time` | `1.0 s` | 旋转前预测碰撞 | 太短预见不足，太长可能在窄处过于保守 |
 
-`general_goal_checker` 为 `0.30 m/0.15 rad`，`PoseProgressChecker`、速度平滑、RPP
+`general_goal_checker` 为 `0.30 m/0.10 rad`，`PoseProgressChecker`、速度平滑、RPP
 碰撞预测和 Collision Monitor 都没有关闭。没有选择放宽 yaw、增加 BackUp 或取消碰撞保护，
 因为这些做法只会掩盖状态反复切换。
 
@@ -636,7 +647,7 @@ ros2 param get /controller_server FollowPath.closed_loop
 # 2. 发送目标前或导航途中启动；新目标会重新开始 120 s 获取计时
 ros2 run go2_navigation rotation_diagnostics \
   --mode navigation --acquire-timeout 120 --duration 10 \
-  --xy-tolerance 0.30 --yaw-tolerance 0.15
+  --xy-tolerance 0.30 --yaw-tolerance 0.10
 
 # 3. 需要保留原始证据时记录四级速度、规划、真值、里程计和 AMCL
 ros2 bag record /plan /cmd_vel_teleop /cmd_vel_nav /cmd_vel_switched \
@@ -793,30 +804,34 @@ ros2 lifecycle get /controller_server
 |---|---|---:|---|---|
 | 局部膨胀半径 | `/local_costmap/local_costmap` → `inflation_layer.inflation_radius` | `0.30 m` | 狗周边的局部障碍警戒带更宽，近场更早绕开 | 更易贴近障碍，安全余量变小 |
 | 局部代价衰减 | `/local_costmap/local_costmap` → `inflation_layer.cost_scaling_factor` | `3.0 1/m` | 离开障碍后代价下降更快，路径更可能靠近膨胀圈边缘 | 代价向外延续更远，局部避障更早让开 |
-| 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.20 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
+| 全局膨胀半径 | `/global_costmap/global_costmap` → `inflation_layer.inflation_radius` | `0.50 m` | `/plan` 通常离墙、静态障碍更远；窄通道可能不再可通行 | 全局路径更贴墙，窄通道更容易通过 |
 | 全局代价衰减 | `/global_costmap/global_costmap` → `inflation_layer.cost_scaling_factor` | `0.5 1/m` | 数值越大，代价在膨胀半径内下降越快 | 数值越小，代价在膨胀半径内下降越慢 |
 | 前向速度采样上限 | `/controller_server` → `FollowPath.vx_max` | `0.27 m/s` | 前进更快，转弯过冲和接触模型误差风险上升 | 更稳但完成导航更慢 |
 | 转向速度采样上限 | `/controller_server` → `FollowPath.wz_max` | `0.40 rad/s` | 转向更快，可能超过目标朝向 | 转向更平缓，过小可能难以克服四足接触阻力 |
-| 速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.27, 0.0, 0.40]` | 放宽对应轴的最高速度限制 | 限制对应轴的最高速度 |
+| 共享速度硬上限 | `/velocity_smoother` → `max_velocity` | `[0.30, 0.0, 0.50]` | 放宽键盘/Unitree Move 对应轴的最高速度 | 限制对应轴的最高速度 |
+| 共享速度硬下限 | `/velocity_smoother` → `min_velocity` | `[-0.30, 0.0, -0.50]` | 绝对值增大时允许更快倒车/右转 | 趋近 0 时会收紧或禁止负向命令 |
 
-`max_velocity` 的三个数依次是 `[x 前进 m/s, y 横移 m/s, z 角速度 rad/s]`。当前默认
-`forward_mppi` 是前向 MPPI 档，正常只调整 `x` 和 `z`，不要把 `y` 当作四足机器人可以
-横走的速度。MPPI 的 `FollowPath.vx_max` 是采样出的前进速度上限，实际速度还会被
-`velocity_smoother.max_velocity[0]` 限制：若把前者调为 `0.35 m/s` 而上限仍是 `0.27 m/s`，
-狗仍不会超过 `0.27 m/s`。例如想把前进速度降为 `0.20 m/s`，应同时设置：
+`max_velocity/min_velocity` 的三个数依次是 `[x 线速度 m/s, y 横移 m/s,
+z 角速度 rad/s]`。当前默认 `forward_mppi` 是前向 MPPI 档，不要把 `y`
+当作四足机器人可以横走的速度。MPPI 的 `FollowPath.vx_max=0.27` 和
+`vx_min=0.0` 只约束自主控制器；共享 smoother 保留 `-0.30 m/s` 手动倒车，
+解决“前向规划约束误伤键盘倒车”的耦合。实际速度仍会被 Collision Monitor
+减速或急停。例如想把自主前进速度降为 `0.20 m/s`，只需设置：
 
 ```text
 FollowPath.vx_max = 0.20
-max_velocity = [0.20, 0.0, 0.40]
 ```
+
+共享 smoother 可继续保持 `[0.30,0.0,0.50]`；若需要对所有输入做系统级降速，
+才单独降低它的上限。
 
 `forward_rpp` 对照档对应的是 `FollowPath.desired_linear_vel`（控制器希望达到的速度），
 上限同样由 `velocity_smoother.max_velocity[0]` 兜底。
 
-当前现场基线只改变 Global Costmap：`inflation_radius=0.20 m`、
-`cost_scaling_factor=0.5`；Local Costmap 仍为 `0.30 m/3.0`。`0.20 m` 小于 Footprint
-外接半径约 `0.474 m`，可能让全局路径更贴墙，所以它代表当前画面/规划 A/B 值，不代表
-安全最优值。继续调参时保持控制器、传感器缓存和速度不变。RViz 左侧 `Displays` 中一次
+当前现场基线只改变 Global Costmap：`inflation_radius=0.50 m`、
+`cost_scaling_factor=0.5`；Local Costmap 仍为 `0.30 m/3.0`。这会形成较宽且缓慢衰减的
+全局代价带，使路径更早远离墙面，但窄于两侧膨胀代价带所需空间的通道可能不再可通行。
+它代表当前画面/规划 A/B 值，不代表安全最优值。继续调参时保持控制器、传感器缓存和速度不变。RViz 左侧 `Displays` 中一次
 只打开 `Global Costmap` 或
 `Local Costmap`，观察障碍周边膨胀圈；同时观察绿色 `Raw Global Plan=/plan` 是否离障碍更远。
 不要只凭颜色判定图层，因为透明度和多个 Display 叠加会改变颜色。
@@ -836,16 +851,16 @@ Nav2 → twist_mux → velocity_smoother → collision_monitor → /cmd_vel → 
 
 | 参数 | YAML 文件与路径 |
 |---|---|
-| 两张 costmap 的 `inflation_radius`、`cost_scaling_factor` | `simdog/src/go2_navigation/config/navigation.yaml` 中相应 local/global `inflation_layer` |
-| `vx_max`、`vx_min`、`vy_max`、`wz_max`、各 critic 权重、`max_velocity` | `simdog/src/go2_navigation/config/controller_forward_mppi.yaml` |
-| `desired_linear_vel`、`rotate_to_heading_angular_vel`、`max_angular_accel`、`max_velocity`（RPP 对照档） | `simdog/src/go2_navigation/config/controller_forward_rpp.yaml` |
-| `max_accel`、`max_decel` 等速度平滑斜率 | `simdog/src/go2_navigation/config/navigation.yaml` 的 `velocity_smoother` |
+| 两张 costmap 的 `inflation_radius`、`cost_scaling_factor` | `simdog/src/go2/go2_navigation/config/navigation.yaml` 中相应 local/global `inflation_layer` |
+| `vx_max`、`vx_min`、`vy_max`、`wz_max`、各 critic 权重、`max_velocity` | `simdog/src/go2/go2_navigation/config/controller_forward_mppi.yaml` |
+| `desired_linear_vel`、`rotate_to_heading_angular_vel`、`max_angular_accel`、`max_velocity`（RPP 对照档） | `simdog/src/go2/go2_navigation/config/controller_forward_rpp.yaml` |
+| `max_accel`、`max_decel` 等速度平滑斜率 | `simdog/src/go2/go2_navigation/config/navigation.yaml` 的 `velocity_smoother` |
 
 修改 YAML 后重启这套导航入口才会完整应用。`nav_tuner` 的调参注册表当前面向 RPP
 对照档，已纳入的 `local/global.inflation_*`、`rpp.desired_linear_vel` 和
 `velocity.max_velocity`，可在 `controller_profile:=forward_rpp` 下通过 `nav_tuner`
 逐项设置、回读后输入 `save` 保存；`save` 会先在
-`simdog/src/go2_navigation/logs/backups/<timestamp>/` 创建备份。`rqt_reconfigure` 本身没有
+`simdog/src/go2/go2_navigation/logs/backups/<timestamp>/` 创建备份。`rqt_reconfigure` 本身没有
 这个保存、备份和实验记录能力。
 
 ### 10.4 `nav_tuner`：先认清“旋钮能不能真的生效”
@@ -933,10 +948,10 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 ```
 
 保存前先用 `show` 复核。`save` 会在
-`simdog/src/go2_navigation/logs/backups/<timestamp>/` 备份，再只改注册表允许的 YAML
+`simdog/src/go2/go2_navigation/logs/backups/<timestamp>/` 备份，再只改注册表允许的 YAML
 标量；任一文件失败会整组恢复。`record run_id=... case=... result=... notes=...` 用于追加
 实验行。完整参数归属和本机实测数据见
-`simdog/src/go2_navigation/docs/nav2_runtime_parameter_matrix.md`。
+`simdog/src/go2/go2_navigation/docs/nav2_runtime_parameter_matrix.md`。
 
 `rqt_reconfigure` 仍是标准参数 GUI，适合搜索参数，但它不会告诉你插件是否真的有动态
 回调，也不会安全停车、重建插件、保存 YAML 或记录实验。因此学习时可把它理解为“通用
@@ -984,7 +999,7 @@ world 没有 `gazebo_ros_state` 插件，或尚未重启 Gazebo；不要跳过�
 发生接触，右方虽 100% 检出也发生接触，因此 0.50 m 被否决，所有配置恢复 0.90 m。
 D435 也尚未满足正式重复样本。所以在后续安全标定前，不应把“话题存在”当成
 “近距已覆盖”，也不能把“检测到了但已经接触”算 PASS。详细 CSV、方向与障碍厚度对照见
-`simdog/src/go2_navigation/docs/lidar_blind_zone_validation.md`。
+`simdog/src/go2/go2_navigation/docs/lidar_blind_zone_validation.md`。
 
 ### 10.6 Footprint 校准：画的是整只机器狗的动态影子
 
@@ -1021,7 +1036,7 @@ local/global costmap。
 ```bash
 source scripts/setup_simdog.bash
 ros2 run go2_navigation footprint_calibrator \
-  --output-dir simdog/src/go2_navigation/logs/footprint/my_run
+  --output-dir simdog/src/go2/go2_navigation/logs/footprint/my_run
 
 # 参数保存或重启后只核对发布轮廓，不让机器人走四种步态
 # 固定 AMCL 必须先完成 2D Pose Estimate，并等 Navigation active
@@ -1043,7 +1058,7 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 
 本轮只证明 Gazebo 当前步态的几何包络；真机柔性、摔倒和更高速度仍是后续实验，不能
 因为绿色线看起来正确就提前把三个 profile 标成已校准。完整 24 个顶点、逐动作范围与
-原始证据见 `simdog/src/go2_navigation/docs/footprint_calibration.md`。
+原始证据见 `simdog/src/go2/go2_navigation/docs/footprint_calibration.md`。
 
 ## 11. Costmap、Footprint 和碰撞保护
 
@@ -1174,7 +1189,7 @@ ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
 | `Global Costmap` | Static+Obstacle+Inflation | 大范围规划代价，可随实时障碍变化 | 脱离实物的膨胀岛先查 `/scan`/TF |
 | `Local Costmap` | 机器人附近滚动代价窗 | 随机器人平移窗口、随实时障碍更新 | 不是静态地图，不应把滚动误认成地图漂移 |
 
-![重力对齐扫描与原始倾斜扫描的真实 RViz 窗口](../simdog/src/go2_lidar_scan/docs/images/rviz_scan_debug_final.png)
+![重力对齐扫描与原始倾斜扫描的真实 RViz 窗口](../simdog/src/go2/go2_lidar_scan/docs/images/rviz_scan_debug_final.png)
 
 图中左侧可见两个 LaserScan Display，顶部为 `Global Status: Ok`。这是旧高度窗下的一次
 历史清洁重启截图；同次 `/scan` 约 9.15 Hz，健康 Marker 为绿色且显示对齐姿态
@@ -1184,8 +1199,9 @@ ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
 历史运动证据中，机身倾斜 `5.15°` 时，旧投影得到 4430 个地面获胜角度格，重力对齐
 得到 0；240 帧点云 TF 全成功，`/scan=8.89 Hz`，`map→odom` 最大单步为
 `0.0224 m/0.00698 rad`，该批样本的地面/TF/频率子门 PASS。后续人工在线 SLAM 曾
-复现扇形白线；把高度窗调为 `0.20..0.30 m` 后现场目视正常，现进入完整建图、保存和
-固定图导航验收。1800 水平列 A/B 同样消除了地面端点但只有
+复现扇形白线；`0.20..0.30 m` 曾是过渡目视正常值，随后用户用
+`0.48..0.60 m` 完成覆盖并保存固定会话，该高窗现为正式仿真默认。
+1800 水平列 A/B 同样消除了地面端点但只有
 5.06 Hz；默认 900 列（0.4°）只负责恢复实时率。历史 135 秒
 运行中 costmap 仍丢弃过 2 个过旧观测，这会少用一帧，不会凭空生成障碍，仍需长期监测。
 
@@ -1197,7 +1213,7 @@ ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
 `simulation_navigation.launch.xml map_session:=new tuning_gui:=true`，
 终端 2 运行 `ros2 run go2_lidar_scan motion_scan_probe --duration 150`，终端 3 运行键盘并
 把 `cmd_vel` 重映射到 `/cmd_vel_teleop`。完整可复制命令见
-[`go2_lidar_scan/README.md`](../simdog/src/go2_lidar_scan/README.md)。机器人不动、RViz 红项或
+[`go2_lidar_scan/README.md`](../simdog/src/go2/go2_lidar_scan/README.md)。机器人不动、RViz 红项或
 TF 报错时，先松开键盘并执行：
 
 ```bash
@@ -1211,7 +1227,9 @@ ros2 run tf2_ros tf2_echo base_footprint velodyne_level
 `/navigation/resume` 解锁；旧目标不会自动续行。
 
 rqt 默认直接选中 `/go2_lidar_scan_converter`。只改 `min_height/max_height`；当前正式值是
-`0.20/0.30 m`，建正式地图时不要再调。两者必须始终满足 `min < max`。
+`0.48/0.60 m`。界面滑块范围为 `-0.50..1.50 m`、步长为
+`0.01 m`，这只是排障可调范围，不是推荐范围。两者必须始终满足 `min < max`，非法组合会
+被节点拒绝并保留原值。
 `Scan Health` 的 `height` 行和下面的回读都应立即变化：
 
 ```bash
@@ -1239,7 +1257,7 @@ ros2 param get /go2_lidar_scan_converter max_height
 
 当前系统级安全门因此为 FAIL。在 stop zone 重新进入至少一个可靠传感器的持续可见范围、
 并通过 ContactSensor 重复试验前，不继续自主移动碰撞验收。完整阶段表与实验顺序见
-`simdog/src/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。
+`simdog/src/go2/go2_navigation/docs/costmap_ghost_obstacle_investigation.md`。
 
 ### Local Costmap 打开后为什么仍可能一片空白
 
@@ -1319,14 +1337,26 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard \
   --ros-args -r cmd_vel:=/cmd_vel_teleop
 ```
 
+这里的“先加载环境”不是可省略步骤。DDS 可以理解为 ROS 2 节点彼此找到对方的
+通讯群：导航终端若使用默认 Fast DDS，键盘终端却使用 CycloneDDS + `lo`，
+即使两边都是 Domain 0，键盘也可能看不到 `twist_mux`。肉眼现象是键位帮助已显示，
+但机器狗不动；数据链现象是 `/cmd_vel_teleop` 的 `Publisher count: 0`。
+推荐停掉旧进程后，让导航和键盘两个终端都先执行
+`source scripts/setup_unitree_sim.bash`。
+
 检查：
 
 ```bash
+ros2 topic info /cmd_vel_teleop
 ros2 topic info /cmd_vel --verbose
 ros2 topic echo /pause_navigation
 ros2 topic hz /cmd_vel
 ros2 control list_controllers
 ```
+
+键盘节点运行时，`/cmd_vel_teleop` 应显示 `Publisher count: 1`；
+`/pause_navigation` 应为 `false`。前者仍为 0 时先对比两个终端的
+`RMW_IMPLEMENTATION`、`CYCLONEDDS_URI` 和 `ROS_DOMAIN_ID`，不要先改速度或关闭安全链。
 
 ## 13. RViz Displays 和工具栏词典
 
@@ -1397,7 +1427,7 @@ ros2 control list_controllers
 | `desired_linear_vel` | 0.27 m/s | 四足可能克服不了接触阻力 | 转弯、制动困难 |
 | `min_approach_linear_velocity` | 0.10 m/s | 终点前走走停停 | 可能冲过目标 |
 | `xy_goal_tolerance` | 0.30 m | 为最后几厘米反复挪动 | 停得离目标较远 |
-| `yaw_goal_tolerance` | 0.15 rad | 终点修正更久、过小可能过冲 | 最终朝向偏差明显 |
+| `yaw_goal_tolerance` | 0.10 rad | 终点修正更久、过小可能过冲 | 最终朝向偏差明显 |
 | `inflation_radius` | 0.30 m | 路径贴墙 | 窄通道被全部封死 |
 | `source_timeout` | 2.0 s 联调值 | Gazebo 偶发延迟导致误急停 | 真断传感器后停车太慢 |
 | AMCL `alpha1..5` | 仿真 0.05 | 过度相信里程计 | 粒子无谓扩散、对称环境易多峰 |
@@ -1431,7 +1461,7 @@ ros2 control list_controllers
 每个终端先执行：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ```
 

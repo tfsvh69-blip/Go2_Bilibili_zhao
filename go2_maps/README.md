@@ -20,7 +20,7 @@ go2_maps/
 `<场景>_<覆盖范围>_v<版本>`，例如：
 
 ```bash
-bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
+bash simdog/src/go2/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 脚本拒绝覆盖已有同名目录，先在隐藏临时目录生成并检查完整，再原子移动到

@@ -11,5 +11,5 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/hao/ROS/Go2_Bilibili_zhao-main/simdog/src/unitree-go2-ros2/robots/configs/go2_config"
+    "cmake.sourceDirectory": "/home/luhao/my/ROS/Go2_Bilibili_zhao-main/simdog/src/LIO-SAM"
 }

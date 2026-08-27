@@ -55,26 +55,30 @@
 
 本目录是 Unitree Go2 完整四足仿真开发环境，目标系统为 Ubuntu 22.04、ROS 2 Humble 和 Gazebo Classic 11。项目仅维护 `simdog/` 主 colcon 工作空间，不再维护焊死腿关节、依赖 planar-move 滑行的简化机器人。
 
-- `simdog/src/unitree-go2-ros2/`：Go2 模型、CHAMP 四足步态、`ros2_control`、Gazebo 世界和机器人配置。
-- `simdog/src/go2_behaviors/`：复用标准关节轨迹接口实现的打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
-- `simdog/src/go2_unitree_sim_bridge/`：把 Gazebo/CHAMP 映射为 Unitree Sport API 消息、话题和受支持请求。
-- `simdog/src/go2_lidar_scan/`：复用上游点云投影，统一维护 VLP-16 `/velodyne_points -> /scan` 参数、诊断 Marker 与独立 RViz 排障入口。
-- `simdog/src/lidar_localization_ros2/`：BSD-2-Clause 的 NDT/GICP 实验定位库，提供自动初始定位、诊断、重定位与 PCD 转二维地图工具。
-- `simdog/src/go2_navigation/`：自主导航包，默认提供在线 Slam Toolbox 建图导航，固定地图默认使用 AMCL，
+`simdog/src/` 按 `go2/`、`platform/`、`localization/`、`vendor/` 分层；完整包职责与
+依赖方向见 `simdog/src/README.md`。目录只表达所有权和用途，ROS 包名与公开接口不随目录
+变化。新增业务逻辑不得跨包导入实现文件，优先通过话题、服务、Action、TF 和参数解耦。
+
+- `simdog/src/platform/unitree-go2-ros2/`：Go2 模型、CHAMP 四足步态、`ros2_control`、Gazebo 世界和机器人配置。
+- `simdog/src/go2/go2_behaviors/`：复用标准关节轨迹接口实现的打招呼、点头、伸展、趴下、挥爪和简单舞蹈。
+- `simdog/src/go2/go2_unitree_sim_bridge/`：把 Gazebo/CHAMP 映射为 Unitree Sport API 消息、话题和受支持请求。
+- `simdog/src/go2/go2_lidar_scan/`：复用上游点云投影，统一维护 VLP-16 `/velodyne_points -> /scan` 参数、诊断 Marker 与独立 RViz 排障入口。
+- `simdog/src/localization/lidar_localization_ros2/`：BSD-2-Clause 的 NDT/GICP 实验定位库，提供自动初始定位、诊断、重定位与 PCD 转二维地图工具。
+- `simdog/src/go2/go2_navigation/`：自主导航包，默认提供在线 Slam Toolbox 建图导航，固定地图默认使用 AMCL，
   NDT + 二维 EKF 作为实验档，并提供 SmacPlanner2D + MPPI（默认）/RPP（对照）、安全控制链与健康检查。
-- `simdog/src/unitree_ros2_interfaces/`：固定的 Unitree 官方 `unitree_ros2 v0.3.0` `unitree_go`、`unitree_api` 接口快照。
-- `simdog/src/LIO-SAM/`：Velodyne 与 IMU 融合建图。
-- `simdog/src/ndt_relocalization/`：基于 PCD 地图的 NDT 重定位 ROS 2 节点。
-- `simdog/src/fast_gicp/`：CUDA NDT 点云配准后端。
-- `simdog/src/ndt_omp_ros2/`：OpenMP CPU 点云配准回退后端。
-- `simdog/src/realsense_ros_gazebo/`、`pointcloud_to_laserscan/`：相机仿真与点云转换组件。
+- `simdog/src/platform/unitree_ros2_interfaces/`：固定的 Unitree 官方 `unitree_ros2 v0.3.0` `unitree_go`、`unitree_api` 接口快照。
+- `simdog/src/localization/LIO-SAM/`：Velodyne 与 IMU 融合建图。
+- `simdog/src/localization/ndt_relocalization/`：基于 PCD 地图的 NDT 重定位 ROS 2 节点。
+- `simdog/src/vendor/fast_gicp/`：CUDA NDT 点云配准后端。
+- `simdog/src/vendor/ndt_omp_ros2/`：OpenMP CPU 点云配准回退后端。
+- `simdog/src/vendor/realsense_ros_gazebo/`、`simdog/src/vendor/pointcloud_to_laserscan/`：相机仿真与点云转换组件。
 - `scripts/`：依赖安装、构建、环境加载和 GPU 运行验证脚本。
 - `build/`、`install/`、`log/`：构建产物，不作为源码修改。
 - `文档/`：参考资料，不作为功能源码。
 
 ## 硬件与 GPU 基线
 
-当前电脑实际 GPU 是 `NVIDIA GeForce RTX 4060 Laptop GPU`，显存 `8188 MiB`，计算能力 8.9；不是 RTX 5070。当前驱动验证版本为 `595.84`，CUDA 工具链为 12.8，GPU NDT 编译目标为 `sm_89`。
+当前电脑实际 GPU 是 `NVIDIA GeForce RTX 5070`，显存 `12227 MiB`，计算能力 12.0，驱动验证版本为 `595.84`，CUDA 工具链为 12.8.93，GPU NDT 编译目标为 `sm_120`。`sm_120` CUDA NDT 已完成真实 PCD 配准验证，同时保留 OpenMP CPU 回退。
 
 只有 NDT 点云配准使用 CUDA 计算。Gazebo 和 RViz2 可使用 GPU 进行 OpenGL 渲染；Gazebo 物理、CHAMP、LIO-SAM 的 GTSAM 图优化和大部分 PCL 预处理仍主要使用 CPU。硬件、驱动、CUDA 或编译架构发生变化时，必须同步更新 `README.md`、`GPU_TESTING.md`、`PROJECT_MEMORY.md`、`AGENTS.md` 和 `CLAUDE.md`。
 
@@ -91,7 +95,7 @@ source scripts/setup_simdog.bash
 
 Unitree 接口仿真使用 `source scripts/setup_unitree_sim.bash`，默认配置 CycloneDDS、`lo` 和 Domain 0；脚本不会继承终端遗留的 `ROS_DOMAIN_ID`，隔离测试只能通过 `GO2_UNITREE_SIM_DOMAIN_ID=<id>` 显式覆盖。真机只使用 `source scripts/setup_unitree_real.bash <网卡名>`，默认 Domain 0，且不得启动仿真 bridge。
 
-`scripts/build_workspaces.sh` 当前只构建 `simdog`。检测到 `/usr/local/cuda-12.8/bin/nvcc` 时，会为 `fast_gicp` 和 `ndt_relocalization` 构建 `sm_89` CUDA 后端；否则构建 OpenMP CPU 回退版本。
+`scripts/build_workspaces.sh` 当前只构建 `simdog`。检测到 `/usr/local/cuda-12.8/bin/nvcc` 时，会从 `nvidia-smi` 读取目标 GPU 的 compute capability，为 `fast_gicp` 和 `ndt_relocalization` 构建对应 CUDA 架构（本机为 `sm_120`）；否则构建 OpenMP CPU 回退版本。
 
 修改 xacro、Python 启动文件或通过 `--symlink-install` 链接的资源后，通常可直接重启相应节点。修改 C++、CUDA、消息、服务或 CMake 配置后，应执行：
 
@@ -119,7 +123,7 @@ ros2 run go2_behaviors go2_behavior hello
 # 默认：从空图开始在线建图导航，地图会随机器人探索扩展
 ros2 launch go2_navigation simulation_navigation.launch.xml
 # 保存后得到的 map.yaml/pgm 可直接用于固定 AMCL，不要求 GlobalMap.pcd
-bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
+bash simdog/src/go2/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 # 固定二维地图：AMCL 定位，静态地图不会自行扩展
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=static_map map_dir:=$GO2_PROJECT_ROOT/go2_maps/online/latest \
@@ -140,14 +144,17 @@ ros2 run go2_navigation health_check --mode online_slam --localization amcl
 `controller_profile:=forward_mppi`（前向 DiffDrive MPPI），`forward_rpp` 是
 Rotation Shim + RPP 对照档，`omni_mppi` 是全向对照。默认路径链为
 `SmacPlanner2D -> SmoothPath(SimpleSmoother) -> MPPI`；`PoseProgressChecker` 将平移和
-转向都计为进展，普通目标容差为 `0.30 m/0.15 rad`。传递
+转向都计为进展，普通目标容差为 `0.30 m/0.10 rad`。传递
 `tuning_gui:=true` 可打开标准 `rqt_reconfigure`；其修改只在当前运行生效，
 不得用于关闭碰撞或锁速保护。导航控制链为
 `Nav2/键盘/Unitree Move -> twist_mux -> velocity_smoother -> collision_monitor -> /cmd_vel -> CHAMP`；
 目标门禁公开 `/navigate_to_pose`，内部 Nav2 action 为 `/navigate_to_pose_raw`；越界、障碍、定位失效目标会被拒绝而不触发规划器。行为动作、趴下状态、定位失效或关键导航节点掉线时安全监督发布 `/pause_navigation` 锁住输入并输出零速度。
 导航中普通取消使用 RViz `Navigation 2 -> Cancel`；卡住时调用 `/navigation/stop`，
 健康后调用 `/navigation/resume`，旧目标不会自动续行。
-导航栈运行时，键盘必须使用 `source scripts/setup_unitree_sim.bash`，并执行
+导航栈与键盘终端必须加载完全相同的 DDS/RMW 环境；推荐两个终端都先执行
+`source scripts/setup_unitree_sim.bash`，不得用 `setup_simdog.bash` 启动导航后再只给键盘
+加载 `setup_unitree_sim.bash`。否则即使 `ROS_DOMAIN_ID` 相同，也可能因 Fast DDS 与
+CycloneDDS/回环接口不一致而互相发现不到。键盘执行
 `ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/cmd_vel_teleop`；
 不得直接发布最终出口 `/cmd_vel`。
 两个统一 Gazebo 导航入口还会关闭 CHAMP 足端平面里程计，使用
@@ -218,13 +225,15 @@ bash scripts/verify_gpu_runtime.sh
 - 固定 AMCL 应优先使用 Slam Toolbox 原生保存的二维 `map.yaml/pgm`；LIO-SAM PCD 高度
   投影容易把多高度点变成二维伪障碍，只用于需要 PCD 同源数据的 NDT 实验档。
 - `/scan` 统一由 `go2_lidar_scan` 生成；当前仿真保持 VLP-16 的 `0.90 m` 最小量程，
-  正式高度窗为用户现场确认目视正常的 `0.20..0.30 m`，并可在 rqt 动态调节。重力对齐
+  正式高度窗为用户完成在线建图、保存会话后明确要求固化的
+  `0.48..0.60 m`，并可在 rqt 动态调节。该高窗可避免当前场景的地面幽灵端点，
+  但更容易漏掉矮障碍；不得把高墙地图目视正常当作低障碍防撞已验收。重力对齐
   运动 A/B 和 `+inf` clearing 子门已通过；完整覆盖建图、保存、固定图导航及近距
   Collision Monitor 几何仍未验收。不得把现场目视或子门通过等同于整套防撞安全通过。
-- Global Costmap 当前现场基线为 `inflation_radius=0.20 m`、
+- Global Costmap 当前现场基线为 `inflation_radius=0.50 m`、
   `cost_scaling_factor=0.5`，Local Costmap 保持 `0.30 m/3.0`。幽灵代价区域已基本不再
-  出现，但远处偶有残余；这组全局值只改变代价扩散，不代表错误端点绝对归零或安全余量
-  已标定。
+  出现，但远处偶有残余；较宽且缓慢衰减的全局代价带会让路径更早远离墙面，也可能让
+  窄通道不可通行。这组全局值只改变代价扩散，不代表错误端点绝对归零或安全余量已标定。
 - 根目录已配置 Git，默认分支为 `main`，远端为 `origin`；提交前仍须核对工作区，避免混入用户的无关修改。
 
 ## 提交与合并请求

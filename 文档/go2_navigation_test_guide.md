@@ -57,7 +57,7 @@ ros2 param get /map_server yaml_filename
 ### 1. 确认构建产物
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash scripts/build_workspaces.sh            # 全量构建（含 GPU 后端，较慢）
 # 或增量构建受影响包：
 #   source /opt/ros/humble/setup.bash
@@ -70,7 +70,7 @@ bash scripts/build_workspaces.sh            # 全量构建（含 GPU 后端，�
 ### 2. 环境加载（每个终端都要）
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash      # CycloneDDS + lo + Domain 0（项目标准）
 # 不要 export ROS_DOMAIN_ID=141：所有 Gazebo、定位、Nav2、CLI 必须在同一域 0。
 # 隔离验证只能在 source 前设置 GO2_UNITREE_SIM_DOMAIN_ID=<id>。
@@ -358,7 +358,7 @@ ros2 topic echo /cmd_vel_nav --field linear.y  # RPP 对照档下应持续接近
 唯一发布。另开终端执行：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -r cmd_vel:=/cmd_vel_teleop
@@ -420,7 +420,7 @@ ros2 service call /navigation/resume std_srvs/srv/Trigger "{}"
 
 ```bash
 # 终端 1 —— 完整在线建图导航；它已经自动启动 go2_lidar_scan
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ros2 launch go2_navigation simulation_navigation.launch.xml \
     navigation_mode:=online_slam \
@@ -454,14 +454,14 @@ ros2 param get /go2_lidar_scan_converter max_height
 
 ```bash
 # 终端 2 —— 只读运动探针，不会发布任何速度
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ros2 run go2_lidar_scan motion_scan_probe --duration 150
 ```
 
 ```bash
 # 终端 3 —— 键盘控制，必须走 /cmd_vel_teleop 安全入口
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_unitree_sim.bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
     --ros-args -r cmd_vel:=/cmd_vel_teleop
@@ -475,7 +475,7 @@ ros2 topic echo --once /map --field info
 ros2 run go2_navigation health_check --mode online_slam
 
 # 结束前同时保存可视化地图和可续建 pose graph
-bash simdog/src/go2_navigation/scripts/save_online_map.sh my_world_full_v1
+bash simdog/src/go2/go2_navigation/scripts/save_online_map.sh my_world_full_v1
 ```
 
 驾驶顺序应为外墙一圈、内部平行往返、主要障碍一圈、回到起点闭环；每段按 `k` 停止，

@@ -1,0 +1,96 @@
+# Go2 Gazebo VLP-16 点云到二维扫描的唯一参数源。
+#
+# 用户在线 SLAM 实测确认 +0.20..+0.30 m 时白色放射线和幽灵代价岛恢复正常，
+# 因此固化为正式 /scan 默认窗口。该窗口可在 rqt 中动态调整；/scan_raw 固定保留
+# 旧 -0.05..+0.10 m 窗口作为 A/B 基线。Nav2 必须配套使用
+# pointcloud_to_laserscan 的 +inf 无回波表达，并满足
+# inf_is_valid=true、obstacle_max_range < scan.range_max <= raytrace_max_range。
+go2_lidar_level_frame:
+  ros__parameters:
+    use_sim_time: true
+    cloud_topic: /velodyne_points
+    # 仅在本帧精确 TF 已发布后放行；与转换器同进程走 intra-process。
+    cloud_ready_topic: /go2_lidar_scan/leveled_cloud
+    # 运动探针的跨进程低频证据流；导航不消费它。
+    probe_cloud_topic: /go2_lidar_scan/probe_cloud
+    probe_stride: 5
+    reference_frame: base_footprint
+    level_frame: velodyne_level
+    source_transform_topic: /go2_lidar_scan/level_source_transform
+    cloud_heartbeat_topic: /go2_lidar_scan/cloud_heartbeat
+    lookup_timeout_s: 0.05
+
+go2_lidar_scan_converter:
+  ros__parameters:
+    use_sim_time: true
+    # 上游会先把点云转进该坐标系，再应用高度切片。该坐标系与雷达同原点、
+    # 保留 yaw，但不跟随四足步态的 roll/pitch。
+    target_frame: velodyne_level
+    transform_tolerance: 0.05
+    queue_size: 2
+    always_subscribe: true
+    allow_runtime_height_update: true
+    min_height: 0.48
+    max_height: 0.60
+    angle_min: -3.14159
+    angle_max: 3.14159
+    angle_increment: 0.00872665
+    scan_time: 0.10
+    # 真实 VLP-16 规格下限约 1 m。Gazebo 0.50 m 候选虽有回波，但
+    # 后/右方已进入机体接触包络，因此保留四向无接触的 0.90 m。
+    range_min: 0.90
+    range_max: 15.0
+    # +inf 明确表示该角度没有回波。禁用后上游实际输出 range_max+inf_epsilon，
+    # 即本配置会输出 16 m，laser_geometry 会按超量程丢弃，无法用于 costmap clearing。
+    use_inf: true
+    inf_epsilon: 1.0
+
+# 仅供 RViz/A-B 调试；正常导航默认不启动这个第二转换器。
+go2_lidar_scan_raw_converter:
+  ros__parameters:
+    use_sim_time: true
+    target_frame: ""
+    transform_tolerance: 0.05
+    queue_size: 2
+    always_subscribe: true
+    # A/B 基线不能跟随正式窗口一起变化。
+    allow_runtime_height_update: false
+    min_height: -0.05
+    max_height: 0.10
+    angle_min: -3.14159
+    angle_max: 3.14159
+    angle_increment: 0.00872665
+    scan_time: 0.10
+    range_min: 0.90
+    range_max: 15.0
+    use_inf: true
+    inf_epsilon: 1.0
+
+go2_lidar_scan_diagnostics:
+  ros__parameters:
+    use_sim_time: true
+    cloud_topic: /velodyne_points
+    scan_topic: /scan
+    odom_topic: /odom
+    marker_topic: /go2_lidar_scan/markers
+    diagnostics_topic: /diagnostics
+    reference_frame: base_footprint
+    sensor_frame: velodyne
+    level_frame: velodyne_level
+    expected_scan_frame: velodyne_level
+    source_transform_topic: /go2_lidar_scan/level_source_transform
+    cloud_heartbeat_topic: /go2_lidar_scan/cloud_heartbeat
+    level_tilt_tolerance_deg: 0.10
+    expected_rate_hz: 10.0
+    minimum_rate_hz: 7.0
+    expected_range_min: 0.90
+    expected_range_max: 15.0
+    expected_min_height: 0.48
+    expected_max_height: 0.60
+    # 完整 Gazebo + SLAM 负载下允许短时抖动；连续约 10 帧缺失才判超时。
+    stale_timeout_s: 1.00
+    jump_threshold_m: 0.30
+    stationary_jump_warn_ratio: 0.02
+    stationary_linear_mps: 0.02
+    stationary_angular_rps: 0.05
+    minimum_finite_bins: 30

@@ -5,14 +5,16 @@ set -eo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 setup_script="${script_dir}/setup_simdog.bash"
-sample_map="${project_root}/simdog/src/fast_gicp/data/251370668.pcd"
-sample_scan="${project_root}/simdog/src/fast_gicp/data/251371071.pcd"
+sample_map="${project_root}/simdog/src/vendor/fast_gicp/data/251370668.pcd"
+sample_scan="${project_root}/simdog/src/vendor/fast_gicp/data/251371071.pcd"
 node_binary="${project_root}/simdog/install/ndt_relocalization/lib/ndt_relocalization/ndt_relocalization_node"
 cuda_library="${project_root}/simdog/install/fast_gicp/lib/libfast_vgicp_cuda.so"
 temporary_dir="$(mktemp -d /tmp/go2_gpu_verify.XXXXXX)"
 node_log="${temporary_dir}/ndt.log"
 pose_output="${temporary_dir}/pose.txt"
 gpu_samples="${temporary_dir}/gpu_samples.csv"
+gpu_device_id="${GO2_GPU_DEVICE:-0}"
+cuda_architecture=""
 node_pid=""
 tf_pid=""
 publisher_pid=""
@@ -111,14 +113,20 @@ command -v nvidia-smi >/dev/null 2>&1 ||
 nvidia-smi --query-gpu=index,name,compute_cap,driver_version,memory.total \
     --format=csv,noheader
 /usr/local/cuda-12.8/bin/nvcc --version | tail -n 1
+cuda_architecture="$(nvidia-smi \
+    --query-gpu=compute_cap \
+    --format=csv,noheader,nounits \
+    --id="${gpu_device_id}" 2>/dev/null | head -n 1 | tr -d '.[:space:]')"
+[[ ${cuda_architecture} =~ ^[0-9]+$ ]] ||
+    fail "无法读取 GPU ${gpu_device_id} 的 compute capability。"
 
 ldd "${node_binary}" | rg -q 'libcudart\.so\.12' ||
     fail "NDT 节点未链接 CUDA Runtime。"
 ldd "${node_binary}" | rg -q 'libfast_vgicp_cuda\.so' ||
     fail "NDT 节点未链接 fast_gicp CUDA 库。"
 /usr/local/cuda-12.8/bin/cuobjdump --list-elf "${cuda_library}" |
-    rg -q 'sm_89' ||
-    fail "CUDA 库中未找到 RTX 4060 所需的 sm_89 内核。"
+    rg -q "sm_${cuda_architecture}" ||
+    fail "CUDA 库中未找到当前 GPU 所需的 sm_${cuda_architecture} 内核。"
 
 echo "[2/6] 加载默认 GPU 环境"
 source "${setup_script}"

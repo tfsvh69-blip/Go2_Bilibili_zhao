@@ -58,7 +58,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 2.1 CHAMP 框架（8 个子包）
 
-路径：`simdog/src/unitree-go2-ros2/champ/`
+路径：`simdog/src/platform/unitree-go2-ros2/champ/`
 
 | 包名 | 路径 | 在代码中的角色 |
 |---|---|---|
@@ -72,13 +72,13 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 | **champ_navigation** | `champ/champ_navigation/` | Nav2 导航集成启动文件（`launch/`）和 RViz 导航配置 |
 
 **核心代码入口：**
-- 步态算法头文件：[champ/include/champ/](../simdog/src/unitree-go2-ros2/champ/champ/include/champ/)
-- 基础驱动实现：[champ_base/src/](../simdog/src/unitree-go2-ros2/champ/champ_base/src/)
-- 步态配置文件：[go2_config/config/gait/](../simdog/src/unitree-go2-ros2/robots/configs/go2_config/config/gait/)
+- 步态算法头文件：[champ/include/champ/](../simdog/src/platform/unitree-go2-ros2/champ/champ/include/champ/)
+- 基础驱动实现：[champ_base/src/](../simdog/src/platform/unitree-go2-ros2/champ/champ_base/src/)
+- 步态配置文件：[go2_config/config/gait/](../simdog/src/platform/unitree-go2-ros2/robots/configs/go2_config/config/gait/)
 
 ### 2.2 遥控
 
-路径：`simdog/src/unitree-go2-ros2/champ_teleop/`
+路径：`simdog/src/platform/unitree-go2-ros2/champ_teleop/`
 
 | 项 | 说明 |
 |---|---|
@@ -88,7 +88,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 2.3 Go2 机器人描述
 
-路径：`simdog/src/unitree-go2-ros2/robots/descriptions/go2_description/`
+路径：`simdog/src/platform/unitree-go2-ros2/robots/descriptions/go2_description/`
 
 | 子目录/文件 | 作用 |
 |---|---|
@@ -107,7 +107,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 2.4 Go2 机器人配置
 
-路径：`simdog/src/unitree-go2-ros2/robots/configs/go2_config/`
+路径：`simdog/src/platform/unitree-go2-ros2/robots/configs/go2_config/`
 
 | 子目录/文件 | 作用 |
 |---|---|
@@ -130,7 +130,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.1 fast_gicp — 快速点云配准后端
 
-**路径：** `simdog/src/fast_gicp/`
+**路径：** `simdog/src/vendor/fast_gicp/`
 
 **功能：** 提供 5 种 GICP/NDT 点云配准算法，是 NDT 重定位的核心计算后端：
 
@@ -144,7 +144,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 **关键文件：**
 - CUDA 核心：`src/fast_gicp/cuda/`（11 个 .cu 文件）
 - Python 绑定：`setup.py`（`pygicp` 模块）
-- 集成说明：[GO2_INTEGRATION.md](../simdog/src/fast_gicp/GO2_INTEGRATION.md)（已中文，记录 CUDA 12.8 + RTX 4060 适配）
+- 集成说明：[GO2_INTEGRATION.md](../simdog/src/vendor/fast_gicp/GO2_INTEGRATION.md)（已中文，记录 CUDA 12.8 + RTX 4060 适配）
 
 **在本项目中：** 为 `ndt_relocalization` 提供 GPU 加速的 NDT 配准后端。
 
@@ -152,7 +152,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.2 LIO-SAM — 激光-惯性 SLAM
 
-**路径：** `simdog/src/LIO-SAM/`
+**路径：** `simdog/src/localization/LIO-SAM/`
 
 **功能：** 基于因子图优化的实时紧耦合激光-惯性里程计（IROS-2020 论文实现）：
 - 对 VLP-16 点云进行去畸变和特征提取
@@ -172,7 +172,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.3 ndt_omp_ros2 — CPU 版 NDT 配准
 
-**路径：** `simdog/src/ndt_omp_ros2/`
+**路径：** `simdog/src/vendor/ndt_omp_ros2/`
 
 **功能：** 提供经 OpenMP 多线程优化的 NDT 和 GICP 算法，作为 CUDA NDT 的 CPU 回退方案。相比 PCL 原生版本快约 10 倍。
 
@@ -187,7 +187,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.4 ndt_relocalization — NDT 重定位
 
-**路径：** `simdog/src/ndt_relocalization/`
+**路径：** `simdog/src/localization/ndt_relocalization/`
 
 **功能：** 加载预构建的 PCD 点云地图，通过 NDT 扫描匹配实现实时重定位：
 - 加载 LIO-SAM 保存的 `GlobalMap.pcd`
@@ -205,7 +205,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.5 go2_lidar_scan — Go2 的点云转扫描总装包
 
-**路径：** `simdog/src/go2_lidar_scan/`
+**路径：** `simdog/src/go2/go2_lidar_scan/`
 
 **功能：** 统一维护 `/velodyne_points -> /scan` 的项目配置和可观察验证：
 
@@ -234,7 +234,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.5A pointcloud_to_laserscan — 上游点云/激光扫描转换
 
-**路径：** `simdog/src/pointcloud_to_laserscan/`
+**路径：** `simdog/src/vendor/pointcloud_to_laserscan/`
 
 **功能：** 在 `sensor_msgs/msg/PointCloud2` 和 `sensor_msgs/msg/LaserScan` 之间互相转换：
 - **PointCloudToLaserScanNode：** 3D 点云 → 2D 激光扫描（按高度范围截取并投影）
@@ -248,7 +248,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.6 realsense_ros_gazebo — RealSense 相机仿真
 
-**路径：** `simdog/src/realsense_ros_gazebo/`
+**路径：** `simdog/src/vendor/realsense_ros_gazebo/`
 
 **功能：** 在 Gazebo 中仿真 Intel RealSense 系列相机：
 - **T265** — 跟踪相机（双目鱼眼 + IMU），输出里程计
@@ -264,7 +264,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.7 champ_teleop — 键盘/手柄遥控
 
-**路径：** `simdog/src/unitree-go2-ros2/champ_teleop/`
+**路径：** `simdog/src/platform/unitree-go2-ros2/champ_teleop/`
 
 **功能：** 提供键盘和手柄两种遥控方式，控制 Go2 的运动和姿态：
 - 键盘：基于 teleop_twist_keyboard
@@ -272,7 +272,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.8 go2_behaviors — 常用 Gazebo 动作
 
-**路径：** `simdog/src/go2_behaviors/`
+**路径：** `simdog/src/go2/go2_behaviors/`
 
 **功能：** 为当前 Go2 Gazebo 模型提供打招呼、点头、伸展、趴下、挥爪和简单
 舞蹈，并提供 `stand` 从保持趴下恢复：
@@ -305,7 +305,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.9 go2_unitree_sim_bridge — Unitree 接口兼容桥
 
-**路径：** `simdog/src/go2_unitree_sim_bridge/`
+**路径：** `simdog/src/go2/go2_unitree_sim_bridge/`
 
 **功能：** 把真值里程计、IMU、关节、接触与 TF 转换为官方
 `SportModeState`、`LowState`，并把受支持的 `/api/sport/request` 转换为
@@ -314,7 +314,7 @@ go2_description` 在代码中的分布如下；工作空间顶层的动作包、
 
 ### 3.10 unitree_go / unitree_api — 官方消息接口
 
-**路径：** `simdog/src/unitree_ros2_interfaces/`
+**路径：** `simdog/src/platform/unitree_ros2_interfaces/`
 
 两个包固定来自 Unitree 官方 `unitree_ros2 v0.3.0`，保留 BSD-3-Clause 许可证和
 提交来源。它们只定义 ROS 2 消息，不包含 Unitree 真机运动固件。
@@ -400,7 +400,7 @@ go2_unitree_sim_bridge <── 状态/TF ── Gazebo
 
 ## 六、CHAMP 步态控制关键文件
 
-如 [gait.yaml](../simdog/src/unitree-go2-ros2/robots/configs/go2_config/config/gait/gait.yaml)
+如 [gait.yaml](../simdog/src/platform/unitree-go2-ros2/robots/configs/go2_config/config/gait/gait.yaml)
 所示，步态参数直接影响 Go2 的行走行为：
 
 | 参数 | 含义 | 单位 |
@@ -462,7 +462,7 @@ ros2 topic hz /lowstate
 ## 八、参考链接
 
 - [CHAMP 官方仓库](https://github.com/chvmp/champ)
-- [LIO-SAM 论文 (IROS-2020)](../simdog/src/LIO-SAM/config/doc/paper.pdf)
+- [LIO-SAM 论文 (IROS-2020)](../simdog/src/localization/LIO-SAM/config/doc/paper.pdf)
 - [fast_gicp 官方仓库](https://github.com/SMRT-AIST/fast_gicp)
 - [Unitree SDK2 Go2 SportClient](https://github.com/unitreerobotics/unitree_sdk2/blob/main/include/unitree/robot/go2/sport/sport_client.hpp)
 - [Unitree ROS 2 v0.3.0](https://github.com/unitreerobotics/unitree_ros2/tree/v0.3.0)

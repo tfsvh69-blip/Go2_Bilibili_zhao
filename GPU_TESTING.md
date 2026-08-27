@@ -14,26 +14,34 @@
   程序优先使用 NVIDIA GPU。
 - `simdog/start.sh` 为其打开的所有终端设置同样的 GPU 环境，并显式以 CUDA
   后端启动 NDT。
-- `scripts/build_workspaces.sh` 检测到 CUDA 12.8 时自动构建 `sm_89`
-  GPU NDT；否则构建保留 CPU 回退。
+- `scripts/build_workspaces.sh` 检测到 CUDA 12.8 时从 `nvidia-smi` 读取目标
+  GPU 的 compute capability 并构建对应架构（本机为 `sm_120`）；否则构建保留
+  CPU 回退。CUDA 12.8 已由 NVIDIA 官方列出 `SM_120` 编译支持：
+  [CUDA 12.8 Release Notes](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html)。
 
 当前真正使用 CUDA 计算的是 NDT 点云配准。Gazebo/RViz2 使用 GPU 做 OpenGL
 渲染；LIO-SAM 的 GTSAM 图优化、Gazebo 物理、CHAMP 和多数 PCL 预处理仍使用
 CPU，不能通过环境变量自动变成 GPU 算法。
+
+2026-08-24 当前电脑已实测：RTX 5070 compute capability 12.0、驱动 595.84、
+CUDA 12.8.93；`cuobjdump` 检出 `sm_120`，三级 CUDA NDT 使用仓库 PCD 成功发布
+`/ndt_pose`。验证时 NDT 进程计算显存约 170 MiB，低频采样 GPU 峰值 10%；该峰值
+只说明短核函数被采样到，不作为性能上限。
 
 ## 一键端到端验证
 
 在项目根目录执行：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash scripts/verify_gpu_runtime.sh
 ```
 
 脚本会自动执行以下操作：
 
 1. 使用独立 `ROS_DOMAIN_ID`，避免当前 Gazebo 的 `/clock` 和 TF 干扰验证。
-2. 检查 RTX 4060、驱动、CUDA 12.8、CUDA 动态库和 `sm_89` 内核。
+2. 检查当前 NVIDIA GPU、驱动、CUDA 12.8、CUDA 动态库和与 compute
+   capability 对应的内核（本机 RTX 5070 为 `sm_120`）。
 3. 加载项目默认 GPU 环境。
 4. 用仓库自带 PCD 启动 3 级 CUDA NDT。
 5. 注入 `odom -> base_link` TF 和测试点云。
@@ -47,14 +55,14 @@ bash scripts/verify_gpu_runtime.sh
 通过时应看到类似输出：
 
 ```text
-CUDA NDT enabled on device 0: NVIDIA GeForce RTX 4060 Laptop GPU (compute 8.9)
+CUDA NDT enabled on device 0: NVIDIA GeForce RTX 5070 (compute 12.0)
 Registration backend: cuda
 Created 3 multi-resolution CUDA NDT objects
 NDT GPU 进程：... ndt_relocalization_node ...
 [6/6] 验证通过
 ```
 
-测试点云只来自 `simdog/src/fast_gicp/data/`，不会写入
+测试点云只来自 `simdog/src/vendor/fast_gicp/data/`，不会写入
 `$GO2_PROJECT_ROOT/go2_maps/latest`，也不会覆盖正式地图。由于每次 CUDA 核函数运行很短，
 脚本的低频采样可能显示较低瞬时利用率；计算进程、CUDA 启动日志和
 `/ndt_pose` 共同作为端到端验证依据。
@@ -64,7 +72,7 @@ NDT GPU 进程：... ndt_relocalization_node ...
 终端一：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
 ```
@@ -72,7 +80,7 @@ ros2 launch go2_config gazebo_velodyne.launch.py gui:=false rviz:=true
 终端二：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 ros2 launch ndt_relocalization ndt_localization.launch.py \
     map_path:=$GO2_PROJECT_ROOT/go2_maps/latest/GlobalMap.pcd \
@@ -102,11 +110,11 @@ ros2 param get /ndt_relocalization_node registration_backend
 需要观察明显 GPU 峰值时，可运行 `fast_gicp` 自带完整基准：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 source scripts/setup_simdog.bash
 simdog/build/fast_gicp/gicp_align \
-    simdog/src/fast_gicp/data/251370668.pcd \
-    simdog/src/fast_gicp/data/251371071.pcd
+    simdog/src/vendor/fast_gicp/data/251370668.pcd \
+    simdog/src/vendor/fast_gicp/data/251371071.pcd
 ```
 
 同时在另一终端运行：

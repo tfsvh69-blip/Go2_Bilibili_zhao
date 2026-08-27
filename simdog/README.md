@@ -5,12 +5,16 @@ Gazebo 模型、Velodyne、RealSense、LIO-SAM 和 NDT 重定位。
 当前 `colcon list` 共识别 25 个包，其中包含新的 `go2_lidar_scan`、固定的 Unitree
 ROS 2 v0.3.0 接口包与 Sport API 仿真兼容桥。
 
+源码已按 `go2/`、`platform/`、`localization/`、`vendor/` 分层。先阅读
+[源码导航](src/README.md) 可以看到每个包的职责、主数据链和允许的依赖方向；构建和运行
+仍使用 ROS 包名，不依赖源码目录层级。
+
 ## 配置与构建
 
 请从项目根目录统一安装依赖和构建：
 
 ```bash
-cd /home/hao/ROS/Go2_Bilibili_zhao-main
+cd /home/luhao/my/ROS/Go2_Bilibili_zhao-main
 bash scripts/install_dependencies.sh
 bash scripts/install_gpu_dependencies.sh
 bash scripts/build_workspaces.sh
@@ -47,7 +51,7 @@ ros2 launch go2_lidar_scan simulation_scan_debug.launch.xml \
 并继续支持 rqt 动态调节。完整覆盖建图、保存和固定图导航仍待验收；旧
 `-0.05..+0.10 m` 由 `/scan_raw`
 保留作对照。0.50 m 候选在后/右方向发生接触，默认量程
-已恢复为全链一致的 0.90 m；详细数据见 [`go2_lidar_scan`](src/go2_lidar_scan/README.md)。
+已恢复为全链一致的 0.90 m；详细数据见 [`go2_lidar_scan`](src/go2/go2_lidar_scan/README.md)。
 
 完整操作分为“首次建图”和“已有地图重定位”两种模式，不能让 LIO-SAM 与 NDT 同时
 发布 `map -> odom`。详细的逐终端命令、地图保存、`/initialpose` 和故障排查见
@@ -97,7 +101,7 @@ ros2 run go2_behaviors go2_behavior stand
 程序复用现有 CHAMP、`ros2_control` 和标准
 `FollowJointTrajectory` 接口。动作期间由行为节点独占关节控制权，完成后自动恢复
 CHAMP；不要并行执行多个动作或同时遥控。详细原理、许可证和真机边界见
-[`go2_behaviors/README.md`](src/go2_behaviors/README.md)。
+[`go2_behaviors/README.md`](src/go2/go2_behaviors/README.md)。
 
 行为服务端也可独立启动，并以服务串行动作：
 
@@ -117,9 +121,9 @@ ros2 topic echo /go2_behaviors/status
 Dance1 动作；Move 生效时不得并行键盘遥控。
 
 接口定义固定来自 Unitree 官方 `unitree_ros2 v0.3.0`，来源和许可证见
-[`unitree_ros2_interfaces/README.md`](src/unitree_ros2_interfaces/README.md)；
+[`unitree_ros2_interfaces/README.md`](src/platform/unitree_ros2_interfaces/README.md)；
 字段映射、错误码及未模拟边界见
-[`go2_unitree_sim_bridge/README.md`](src/go2_unitree_sim_bridge/README.md)。关闭桥接：
+[`go2_unitree_sim_bridge/README.md`](src/go2/go2_unitree_sim_bridge/README.md)。关闭桥接：
 
 ```bash
 ros2 launch go2_config gazebo_velodyne.launch.py unitree_bridge:=false
@@ -161,8 +165,8 @@ CPU 上。完整验证与维护流程见根目录 `GPU_TESTING.md`。
 
 ## 修改说明
 
-- 修改 LIO-SAM 参数：`src/LIO-SAM/config/params.yaml`。
-- 修改 Go2 仿真世界或启动项：`src/unitree-go2-ros2/robots/configs/go2_config/`。
+- 修改 LIO-SAM 参数：`src/localization/LIO-SAM/config/params.yaml`。
+- 修改 Go2 仿真世界或启动项：`src/platform/unitree-go2-ros2/robots/configs/go2_config/`。
 - 修改 xacro 后通常只需重新启动；修改 C++ 后执行
   `colcon build --symlink-install --packages-select <包名>`。
 - Gazebo GUI 若受显卡影响，继续使用 `gui:=false`。只有默认 NVIDIA 渲染
